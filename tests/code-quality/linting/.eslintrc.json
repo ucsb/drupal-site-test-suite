@@ -1,0 +1,59 @@
+{
+  "root": true,
+  "extends": ["eslint:recommended"],
+  "env": {
+    "browser": true,
+    "es2020": true,
+    "node": true,
+    "jquery": true
+  },
+  "parserOptions": {
+    "ecmaVersion": 2020,
+    "sourceType": "script"
+  },
+  "globals": {
+    "Drupal": "readonly",
+    "drupalSettings": "readonly",
+    "drupalTranslations": "readonly",
+    "jQuery": "readonly",
+    "_": "readonly",
+    "Cookies": "readonly",
+    "Backbone": "readonly",
+    "Modernizr": "readonly",
+    "loadjs": "readonly",
+    "Shepherd": "readonly",
+    "Sortable": "readonly",
+    "once": "readonly",
+    "CKEditor5": "readonly",
+    "tabbable": "readonly",
+    "transliterate": "readonly",
+    "bodyScrollLock": "readonly",
+    "FloatingUIDOM": "readonly"
+  },
+  "rules": {
+    "consistent-return": "off",
+    "no-underscore-dangle": "off",
+    "no-param-reassign": "off",
+    "no-prototype-builtins": "off",
+    "no-unused-vars": "warn",
+    "no-undef": "error",
+    "no-redeclare": "error",
+    "no-empty": ["warn", { "allowEmptyCatch": true }],
+    "no-cond-assign": ["error", "except-parens"],
+    "no-shadow-restricted-names": "error",
+    "no-self-assign": "error",
+    "no-self-compare": "error",
+    "no-unreachable": "error",
+    "no-unused-expressions": "warn",
+    "max-nested-callbacks": ["warn", 3],
+    "no-plusplus": ["warn", { "allowForLoopAfterthoughts": true }]
+  },
+  "overrides": [
+    {
+      "files": ["**/*.mjs", "tests/**/*.js"],
+      "parserOptions": {
+        "sourceType": "module"
+      }
+    }
+  ]
+}

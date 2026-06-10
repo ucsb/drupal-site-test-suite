@@ -1,0 +1,24 @@
+# gitleaks configuration. Extends the bundled rule set (catches all the
+# default secret patterns gitleaks ships with) and adds project-specific
+# allowlist entries for known false positives.
+
+[extend]
+useDefault = true
+
+# Project setup documentation in .github/ describes SSH key + credential
+# formats for contributors (e.g. "Copy `cat ~/.ssh/key` content from
+# `-----BEGIN RSA PRIVATE KEY-----` to `-----END RSA PRIVATE KEY-----` into
+# an SSH-key repo secret"). gitleaks' default `private-key` rule
+# matches those literal header strings even when no base64 key material is
+# present. The instructional content is by design and contains no actual
+# secrets — the literal SSH keys live only in repo secrets, never in docs.
+#
+# Real secrets accidentally pasted into a Markdown file are an edge case;
+# the team's review process is the backstop. If that becomes a concern,
+# narrow this allowlist to specific filenames or replace with content-based
+# regexes.
+[allowlist]
+description = "Project setup docs describe key/credential formats but contain no real secret material"
+paths = [
+  '''\.github/.*\.md''',
+]

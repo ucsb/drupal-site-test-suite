@@ -1,0 +1,128 @@
+# ──────────────────────────────────────────────────────────────────────────
+# EXAMPLE — not wired to run in this repo. This is the Pantheon-multidev CI
+# the suite's authors use, provided as a starting point. The test suite itself
+# is host-agnostic: it only needs `drush utest:*` to run in any pipeline against
+# a reachable site URL. Replace every placeholder (your-site-*, example_theme,
+# AXE_PROJECT_ID, secrets) before using, and move into .github/workflows/.
+# ──────────────────────────────────────────────────────────────────────────
+name: PR Cleanup Dry Run (Preview Only)
+
+# DRY RUN: This workflow lists multidevs and GitHub environments that WOULD be
+# cleaned up, without actually deleting anything. Use pr-cleanup-enhanced.yml
+# for actual cleanup.
+
+on:
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: 'PR number to preview cleanup (optional - will list all if not specified)'
+        required: false
+        type: string
+
+env:
+  PANTHEON_SITES: "your-site"
+
+jobs:
+  dry-run-cleanup:
+    name: Dry Run - Preview Cleanup
+    runs-on: ubuntu-latest
+    permissions:
+      deployments: read
+      contents: read
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Install Pantheon CLI
+        run: |
+          curl -fsSL https://github.com/pantheon-systems/terminus/releases/latest/download/terminus.phar -o terminus
+          chmod +x terminus
+          sudo mv terminus /usr/local/bin/terminus
+
+      - name: Authenticate with Pantheon
+        run: |
+          terminus auth:login --machine-token="${{ secrets.PANTHEON_MACHINE_TOKEN }}"
+
+      - name: Authenticate with GitHub CLI
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | gh auth login --with-token
+
+      - name: Preview cleanup
+        env:
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          echo "========================================"
+          echo "DRY RUN — Nothing will be deleted"
+          echo "========================================"
+          echo ""
+
+          PR_NUMBER="${{ github.event.inputs.pr_number }}"
+          IFS=',' read -ra SITES <<< "$PANTHEON_SITES"
+
+          total_multidevs=0
+          total_github_envs=0
+
+          # ── Pantheon Multidevs ──────────────────────
+          for site in "${SITES[@]}"; do
+            echo "── Pantheon site: ${site} ──"
+
+            if [[ -n "$PR_NUMBER" ]]; then
+              multidev_name="pr-${PR_NUMBER}"
+              if terminus multidev:list ${site} --format=list 2>/dev/null | grep -q "^${multidev_name}$"; then
+                echo "   WOULD DELETE multidev: ${multidev_name}"
+                ((total_multidevs++))
+              else
+                echo "  ℹ️  No multidev ${multidev_name} found"
+              fi
+            else
+              pr_multidevs=$(terminus multidev:list ${site} --format=list 2>/dev/null | grep "^pr-" || true)
+              if [[ -n "$pr_multidevs" ]]; then
+                while IFS= read -r md; do
+                  if [[ -n "$md" ]]; then
+                    echo "   WOULD DELETE multidev: ${md}"
+                    ((total_multidevs++))
+                  fi
+                done <<< "$pr_multidevs"
+              else
+                echo "  ℹ️  No PR multidevs found"
+              fi
+            fi
+            echo ""
+          done
+
+          # ── GitHub Environments ─────────────────────
+          echo "── GitHub deployment environments ──"
+          if [[ -n "$PR_NUMBER" ]]; then
+            env_name="pr-${PR_NUMBER}"
+            if gh api "repos/${GITHUB_REPOSITORY}/environments/${env_name}" > /dev/null 2>&1; then
+              dep_count=$(gh api "repos/${GITHUB_REPOSITORY}/deployments?environment=${env_name}" --jq '.[].id' 2>/dev/null | wc -l | tr -d ' ')
+              echo "   WOULD DELETE environment: ${env_name} (${dep_count} deployment(s))"
+              ((total_github_envs++))
+            else
+              echo "  ℹ️  No GitHub environment ${env_name} found"
+            fi
+          else
+            github_envs=$(gh api "repos/${GITHUB_REPOSITORY}/environments" --jq '.environments[].name' 2>/dev/null | grep "^pr-" || true)
+            if [[ -n "$github_envs" ]]; then
+              while IFS= read -r env_name; do
+                if [[ -n "$env_name" ]]; then
+                  dep_count=$(gh api "repos/${GITHUB_REPOSITORY}/deployments?environment=${env_name}" --jq '.[].id' 2>/dev/null | wc -l | tr -d ' ')
+                  echo "   WOULD DELETE environment: ${env_name} (${dep_count} deployment(s))"
+                  ((total_github_envs++))
+                fi
+              done <<< "$github_envs"
+            else
+              echo "  ℹ️  No PR GitHub environments found"
+            fi
+          fi
+
+          echo ""
+          echo "========================================"
+          echo "DRY RUN SUMMARY"
+          echo "========================================"
+          echo "  Multidevs that would be deleted:         ${total_multidevs}"
+          echo "  GitHub environments that would be deleted: ${total_github_envs}"
+          echo ""
+          echo "To actually delete, run the 'Enhanced PR Cleanup' workflow."
+          echo "========================================"

@@ -1,0 +1,51 @@
+# EXAMPLE — minimal, host-agnostic CircleCI pipeline for the test suite.
+# Not wired to run in this repo. Copy to your project root as .circleci/config.yml
+# (and connect the project in the CircleCI app).
+#
+# It assumes BASE_URL already points at a REACHABLE running Drupal site.
+# PROVISIONING THAT SITE IS HOST-SPECIFIC AND OUT OF SCOPE HERE (Pantheon,
+# Acquia, a CI-built local site, or an existing staging URL). Add your deploy
+# step where marked and set BASE_URL to the resulting URL.
+#
+# cimg/php:8.3-node provides PHP 8.3 + Node 20. Playwright also needs system
+# libraries; `npx playwright install --with-deps` needs apt (root), hence `sudo`
+# on that step.
+#
+# CI tests a REMOTE/deployed site, so the lanes are called directly (node
+# orchestrator + Playwright specs + the PHPUnit runner) — not via `drush
+# utest:*`, which is the LOCAL entry point and needs a bootstrapped local Drupal.
+version: 2.1
+
+jobs:
+  test-suite:
+    docker:
+      - image: cimg/php:8.3-node
+    environment:
+      BASE_URL: "https://your-reachable-site.example"
+    steps:
+      - checkout
+      # Install PHP dev tools the lint lanes shell out to (phpcs/phpstan/twigcs).
+      - run: composer install --no-interaction --prefer-dist
+      # >>> HOST-SPECIFIC: deploy/provision the site under test here, set BASE_URL.
+      # Install the suite's Node deps + Playwright browsers.
+      - run: cd tests && npm ci
+      - run: cd tests && sudo npx playwright install --with-deps
+      # Code quality (lint orchestrator; uses ../vendor/bin/* and tests/node_modules).
+      - run: cd tests && node code-quality/lint-orchestrator.js
+      # Accessibility against $BASE_URL (full-site lanes).
+      - run: cd tests && npx playwright test accessibility/alfa/alfa-full-site.spec.js
+      - run: cd tests && npx playwright test accessibility/axe/axe-full-site.spec.ts --config=playwright.config.ts
+      - run: cd tests && npx playwright test accessibility/reflow/reflow.spec.js
+      - run: cd tests && npx playwright test accessibility/meta-viewport/meta-viewport.spec.js
+      # Functional / regression (custom-module PHPUnit) — from the project root.
+      - run: node tests/phpunit/run.js tests/reports/phpunit
+      # pa11y and the unified-report render are omitted here (they need extra
+      # config / Drush); see ../github-pantheon/ for the complete flow.
+      - store_artifacts:
+          path: tests/reports/
+          destination: test-reports
+
+workflows:
+  test:
+    jobs:
+      - test-suite

@@ -1,0 +1,305 @@
+# ──────────────────────────────────────────────────────────────────────────
+# EXAMPLE — not wired to run in this repo. This is the Pantheon-multidev CI
+# the suite's authors use, provided as a starting point. The test suite itself
+# is host-agnostic: it only needs `drush utest:*` to run in any pipeline against
+# a reachable site URL. Replace every placeholder (your-site-*, example_theme,
+# AXE_PROJECT_ID, secrets) before using, and move into .github/workflows/.
+# ──────────────────────────────────────────────────────────────────────────
+name: Enhanced PR Cleanup
+
+on:
+  pull_request:
+    types: [ closed ]
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: 'PR number to cleanup (optional - will cleanup all if not specified)'
+        required: false
+        type: string
+      force_cleanup:
+        description: 'Force cleanup even if multidev deletion fails'
+        required: false
+        type: boolean
+        default: false
+      cleanup_github_environments:
+        description: 'Also cleanup GitHub deployment environments'
+        required: false
+        type: boolean
+        default: true
+
+env:
+  # Pantheon sites that may have multidevs to cleanup
+  PANTHEON_SITES: "your-site"
+
+jobs:
+  cleanup-multidevs:
+    name: Enhanced Multidev Cleanup
+    runs-on: ubuntu-latest
+    permissions:
+      deployments: write  # Required for GitHub environment cleanup
+      contents: read
+      pull-requests: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Install Pantheon CLI
+        run: |
+          curl -fsSL https://github.com/pantheon-systems/terminus/releases/latest/download/terminus.phar -o terminus
+          chmod +x terminus
+          sudo mv terminus /usr/local/bin/terminus
+
+      # gh CLI is pre-installed on ubuntu-latest runners
+
+      - name: Authenticate with Pantheon
+        run: |
+          terminus auth:login --machine-token="${{ secrets.PANTHEON_MACHINE_TOKEN }}"
+
+      - name: Authenticate with GitHub CLI
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | gh auth login --with-token
+
+      - name: Determine PR number for cleanup
+        id: pr_info
+        run: |
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            # PR was closed/merged - use the PR number from the event
+            PR_NUMBER="${{ github.event.number }}"
+            echo "cleanup_reason=PR #${PR_NUMBER} was ${{ github.event.action }}" >> $GITHUB_OUTPUT
+          elif [[ "${{ github.event_name }}" == "workflow_dispatch" && -n "${{ github.event.inputs.pr_number }}" ]]; then
+            # Manual trigger with specific PR number
+            PR_NUMBER="${{ github.event.inputs.pr_number }}"
+            echo "cleanup_reason=Manual cleanup requested for PR #${PR_NUMBER}" >> $GITHUB_OUTPUT
+          else
+            # Manual trigger without PR number - will cleanup all pr-* multidevs
+            PR_NUMBER=""
+            echo "cleanup_reason=Manual cleanup of all PR multidevs requested" >> $GITHUB_OUTPUT
+          fi
+
+          echo "pr_number=${PR_NUMBER}" >> $GITHUB_OUTPUT
+          echo "multidev_name=pr-${PR_NUMBER}" >> $GITHUB_OUTPUT
+
+      - name: Create cleanup script
+        run: |
+          cat > cleanup-enhanced.sh << 'EOF'
+          #!/bin/bash
+          set +e
+
+          # Function to delete a GitHub environment and all of its associated deployments.
+          # The GitHub API requires that all deployments be deleted before an environment
+          # can be deleted.
+          delete_github_environment() {
+            local ENV_NAME=$1
+            echo "Cleaning up GitHub environment: ${ENV_NAME}..."
+
+            # Check if the environment exists before trying to delete it.
+            if ! gh api "repos/${GITHUB_REPOSITORY}/environments/${ENV_NAME}" > /dev/null 2>&1; then
+              echo "ℹ️ GitHub environment ${ENV_NAME} does not exist, skipping deletion."
+              return 0
+            fi
+
+            # Get the list of deployment IDs for the environment.
+            DEPLOYMENT_IDS=$(gh api "repos/${GITHUB_REPOSITORY}/deployments?environment=${ENV_NAME}" --jq '.[].id' 2>/dev/null || true)
+
+            if [ -n "$DEPLOYMENT_IDS" ]; then
+              for DEPLOYMENT_ID in $DEPLOYMENT_IDS; do
+                echo "  Marking deployment ${DEPLOYMENT_ID} inactive..."
+                if ! gh api --method POST "repos/${GITHUB_REPOSITORY}/deployments/${DEPLOYMENT_ID}/statuses" \
+                  -f state='inactive' -f description='Deployment is being deleted.' > /dev/null 2>&1; then
+                  echo "  ⚠️  Failed to mark deployment ${DEPLOYMENT_ID} inactive, continuing..."
+                fi
+                echo "  Deleting deployment ${DEPLOYMENT_ID}..."
+                if ! gh api --method DELETE "repos/${GITHUB_REPOSITORY}/deployments/${DEPLOYMENT_ID}" 2>/dev/null; then
+                  echo "  ⚠️  Failed to delete deployment ${DEPLOYMENT_ID}, continuing..."
+                fi
+              done
+            else
+              echo "  ℹ️ No deployments found for environment ${ENV_NAME}."
+            fi
+
+            # Finally, delete the environment now that it is empty.
+            echo "  Deleting environment ${ENV_NAME}..."
+            if gh api --method DELETE "repos/${GITHUB_REPOSITORY}/environments/${ENV_NAME}" 2>/dev/null; then
+              echo "  ✅ GitHub environment ${ENV_NAME} deleted"
+            else
+              echo "  ⚠️  Failed to delete GitHub environment ${ENV_NAME} (may have remaining deployments)"
+            fi
+          }
+
+          # Function to cleanup multidevs for a specific site using Pantheon's build tools
+          cleanup_site_multidevs() {
+            local SITE=$1
+            local PR_NUMBER=$2
+            local CLEANUP_GITHUB=$3
+
+            echo ""
+            echo "Processing site: ${SITE}"
+
+            if [[ -n "$PR_NUMBER" ]]; then
+              # Cleanup specific PR multidev
+              multidev_name="pr-${PR_NUMBER}"
+              echo "Looking for specific multidev: ${multidev_name}"
+
+              if terminus multidev:list ${SITE} --format=list | grep -q "^${multidev_name}$"; then
+                echo "Deleting multidev ${multidev_name} from ${SITE}..."
+                if terminus multidev:delete ${SITE}.${multidev_name} --delete-branch --yes; then
+                  echo "✅ Successfully deleted ${multidev_name} from ${SITE}"
+
+                  # Cleanup GitHub environment if requested
+                  if [[ "$CLEANUP_GITHUB" == "true" && -n "$GITHUB_REPOSITORY" ]]; then
+                    delete_github_environment "$multidev_name"
+                  fi
+
+                  return 0
+                else
+                  echo "❌ Failed to delete ${multidev_name} from ${SITE}"
+                  return 1
+                fi
+              else
+                echo "ℹ️ No multidev ${multidev_name} found on ${SITE}"
+                return 0
+              fi
+            else
+              # Cleanup all PR multidevs manually (no build-tools plugin required)
+              echo "Finding all PR multidevs on ${SITE}..."
+
+              pr_multidevs=$(terminus multidev:list ${SITE} --format=list | grep "^pr-" || true)
+
+              if [[ -z "$pr_multidevs" ]]; then
+                echo "ℹ️ No PR multidevs found on ${SITE}"
+                return 0
+              fi
+
+              echo "Found PR multidevs:"
+              echo "$pr_multidevs"
+
+              local site_errors=0
+              while IFS= read -r multidev_name; do
+                if [[ -n "$multidev_name" ]]; then
+                  echo "Deleting multidev ${multidev_name} from ${SITE}..."
+                  if terminus multidev:delete ${SITE}.${multidev_name} --delete-branch --yes; then
+                    echo "✅ Successfully deleted ${multidev_name} from ${SITE}"
+
+                    if [[ "$CLEANUP_GITHUB" == "true" && -n "$GITHUB_REPOSITORY" ]]; then
+                      delete_github_environment "$multidev_name"
+                    fi
+                  else
+                    echo "❌ Failed to delete ${multidev_name} from ${SITE}"
+                    ((site_errors++))
+                  fi
+                fi
+              done <<< "$pr_multidevs"
+
+              # Also clean up orphaned GitHub environments (no matching multidev)
+              if [[ "$CLEANUP_GITHUB" == "true" && -n "$GITHUB_REPOSITORY" ]]; then
+                echo "Checking for orphaned GitHub environments..."
+                current_multidevs=$(terminus multidev:list ${SITE} --format=list | grep "^pr-" || true)
+                github_envs=$(gh api "repos/${GITHUB_REPOSITORY}/environments" --jq '.environments[].name' 2>/dev/null | grep "^pr-" || true)
+
+                if [[ -n "$github_envs" ]]; then
+                  while IFS= read -r env_name; do
+                    if [[ -n "$env_name" ]]; then
+                      if ! echo "$current_multidevs" | grep -q "^${env_name}$"; then
+                        echo "GitHub environment ${env_name} has no corresponding multidev, cleaning up..."
+                        delete_github_environment "$env_name"
+                      fi
+                    fi
+                  done <<< "$github_envs"
+                fi
+              fi
+
+              if [[ $site_errors -gt 0 ]]; then
+                return 1
+              fi
+              return 0
+            fi
+          }
+
+          # Main cleanup logic
+          echo "Starting enhanced multidev cleanup..."
+          echo "Reason: $CLEANUP_REASON"
+          echo "GitHub environment cleanup: $CLEANUP_GITHUB_ENVIRONMENTS"
+
+          # Split the sites list into an array
+          IFS=',' read -ra SITES <<< "$PANTHEON_SITES"
+
+          cleanup_count=0
+          error_count=0
+
+          for site in "${SITES[@]}"; do
+            if cleanup_site_multidevs "$site" "$PR_NUMBER" "$CLEANUP_GITHUB_ENVIRONMENTS"; then
+              ((cleanup_count++))
+            else
+              ((error_count++))
+              if [[ "$FORCE_CLEANUP" != "true" ]]; then
+                echo "⚠️ Stopping cleanup due to error. Use 'force_cleanup' to continue on errors."
+                exit 1
+              fi
+            fi
+          done
+
+          echo ""
+          echo "Enhanced Cleanup Summary:"
+          echo "✅ Successfully processed: ${cleanup_count} sites"
+          echo "❌ Failed to process: ${error_count} sites"
+
+          if [[ $error_count -gt 0 && "$FORCE_CLEANUP" != "true" ]]; then
+            echo "⚠️ Some cleanups failed. Use 'force_cleanup' option to ignore failures."
+            exit 1
+          fi
+          EOF
+
+          chmod +x cleanup-enhanced.sh
+
+      - name: Run enhanced cleanup
+        env:
+          PANTHEON_SITES: ${{ env.PANTHEON_SITES }}
+          PR_NUMBER: ${{ steps.pr_info.outputs.pr_number }}
+          CLEANUP_REASON: ${{ steps.pr_info.outputs.cleanup_reason || 'Cleanup triggered' }}
+          FORCE_CLEANUP: ${{ github.event.inputs.force_cleanup }}
+          CLEANUP_GITHUB_ENVIRONMENTS: ${{ github.event.inputs.cleanup_github_environments || 'true' }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: ./cleanup-enhanced.sh
+
+      - name: Add cleanup comment to PR (if applicable)
+        if: github.event_name == 'pull_request' && steps.pr_info.outputs.pr_number != ''
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const prNumber = ${{ steps.pr_info.outputs.pr_number }};
+            const action = '${{ github.event.action }}';
+            const cleanupGithub = '${{ github.event.inputs.cleanup_github_environments || 'true' }}';
+
+            let comment = `## Enhanced Multidev Cleanup Complete\n\n`;
+            comment += `PR #${prNumber} was **${action}** - multidev environments have been cleaned up.\n\n`;
+            comment += `### Cleaned Up Environments:\n`;
+            comment += `- \`pr-${prNumber}\` multidevs on all configured Pantheon sites\n`;
+
+            if (cleanupGithub === 'true') {
+              comment += `- GitHub deployment environment: \`pr-${prNumber}\`\n`;
+            }
+
+            comment += `\n### Enhanced Features:\n`;
+            comment += `- ✅ Automated multidev detection and cleanup\n`;
+            comment += `- ✅ GitHub deployment environment cleanup\n`;
+            comment += `- ✅ Multi-site support\n`;
+            comment += `- ✅ Robust error handling\n\n`;
+            comment += `*Multidev environments are automatically cleaned up when PRs are closed or merged.*`;
+
+            await github.rest.issues.createComment({
+              issue_number: prNumber,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: comment
+            });
+
+      - name: Log cleanup completion
+        run: |
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            echo "✅ Enhanced cleanup completed for PR #${{ steps.pr_info.outputs.pr_number }} (${{ github.event.action }})"
+          else
+            echo "✅ Enhanced manual cleanup completed"
+          fi
+          echo "All multidev and GitHub environments have been properly cleaned up"

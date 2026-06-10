@@ -1,0 +1,51 @@
+includes:
+  - phpstan-baseline.neon
+
+parameters:
+  level: 2
+
+  # Pin the result cache to a stable, git-ignored path (tests/.cache/ is in
+  # .gitignore) so CI can persist it via actions/cache between runs. PHPStan's
+  # incremental result cache then re-analyses only changed files + dependents,
+  # which is the bulk of the lint job's runtime.
+  tmpDir: %currentWorkingDirectory%/tests/.cache/phpstan
+
+  # Paths and excludes are anchored to %currentWorkingDirectory% so this
+  # config stays valid no matter where tests/code-quality/ lives in the repo.
+  # Both the lint orchestrator and the `npm run lint:phpstan` script
+  # invoke PHPStan with the project root as cwd.
+  paths:
+    - %currentWorkingDirectory%/web/modules
+    - %currentWorkingDirectory%/web/themes
+    - %currentWorkingDirectory%/web/profiles
+    - %currentWorkingDirectory%/drush/Commands
+
+  # Mirror the lint orchestrator's discovery rules: scan everything under
+  # web/{modules,themes,profiles} except contrib/ and per-module tests/.
+  # Contrib code is the responsibility of upstream maintainers.
+  excludePaths:
+    analyseAndScan:
+      - %currentWorkingDirectory%/web/modules/contrib
+      - %currentWorkingDirectory%/web/themes/contrib
+      - %currentWorkingDirectory%/web/profiles/contrib
+      - %currentWorkingDirectory%/web/modules/custom/*/tests/*
+      - %currentWorkingDirectory%/web/themes/*/tests/*
+      - %currentWorkingDirectory%/web/profiles/custom/*/tests/*
+
+  fileExtensions:
+    - php
+    - module
+    - inc
+    - install
+    - theme
+    - profile
+
+  # Findings already on master are tracked in phpstan-baseline.neon. The lane
+  # is report-only on §0 ladder until enough debt has burned down to flip it
+  # to delta-blocking.
+  reportUnmatchedIgnoredErrors: false
+
+  ignoreErrors:
+    # Drupal-canonical pattern; entity hooks and procedural .module files
+    # legitimately use new static() through dependency injection.
+    - "#^Unsafe usage of new static#"

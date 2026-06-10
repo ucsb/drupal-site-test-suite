@@ -1,0 +1,47 @@
+# EXAMPLE — minimal, host-agnostic GitLab CI pipeline for the test suite.
+# Not wired to run in this repo. Copy to your project root as .gitlab-ci.yml.
+#
+# It assumes BASE_URL already points at a REACHABLE running Drupal site.
+# PROVISIONING THAT SITE IS HOST-SPECIFIC AND OUT OF SCOPE HERE (Pantheon,
+# Acquia, a CI-built local site, or an existing staging URL). Add your deploy
+# step in before_script and set BASE_URL to the resulting URL.
+#
+# The image must provide PHP 8.1+ and Node 20+. Playwright also needs system
+# libraries; `npx playwright install --with-deps` needs apt (root). Use a base
+# image that allows this, or pre-bake the deps.
+#
+# CI tests a REMOTE/deployed site, so the lanes are called directly (node
+# orchestrator + Playwright specs + the PHPUnit runner) — not via `drush
+# utest:*`, which is the LOCAL entry point and needs a bootstrapped local Drupal.
+test-suite:
+  image: php:8.3-cli
+  variables:
+    BASE_URL: "https://your-reachable-site.example"
+  before_script:
+    - apt-get update && apt-get install -y git unzip curl
+    - curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer
+    - curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && apt-get install -y nodejs
+    # >>> HOST-SPECIFIC: deploy/provision the site under test here, then set BASE_URL.
+  script:
+    # Install PHP dev tools the lint lanes shell out to (phpcs/phpstan/twigcs).
+    - composer install --no-interaction --prefer-dist
+    # Install the suite's Node deps + Playwright browsers.
+    - cd tests
+    - npm ci
+    - npx playwright install --with-deps
+    # Code quality (lint orchestrator; uses ../vendor/bin/* and tests/node_modules).
+    - node code-quality/lint-orchestrator.js
+    # Accessibility against $BASE_URL (full-site lanes).
+    - npx playwright test accessibility/alfa/alfa-full-site.spec.js
+    - npx playwright test accessibility/axe/axe-full-site.spec.ts --config=playwright.config.ts
+    - npx playwright test accessibility/reflow/reflow.spec.js
+    - npx playwright test accessibility/meta-viewport/meta-viewport.spec.js
+    # Functional / regression (custom-module PHPUnit) — from the project root.
+    - cd ..
+    - node tests/phpunit/run.js tests/reports/phpunit
+    # pa11y and the unified-report render are omitted here (they need extra config
+    # / Drush); see ../github-pantheon/ for the complete flow.
+  artifacts:
+    when: always
+    paths:
+      - tests/reports/

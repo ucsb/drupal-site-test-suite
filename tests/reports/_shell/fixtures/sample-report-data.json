@@ -1,0 +1,221 @@
+{
+  "schema_version": "1.0",
+  "generated_at": "2026-05-02T19:38:23Z",
+  "surface": {
+    "context": "local",
+    "label": "drupal-178 branch",
+    "base_url": "https://example.test"
+  },
+  "raw_reports": [
+    { "label": "Lint", "href": "lint/lint-report.html" },
+    { "label": "Alfa (key pages)", "href": "alfa/alfa-report.html" },
+    { "label": "Alfa Full Site", "href": "alfa-full/alfa-full-site-report.html" },
+    { "label": "axe", "href": "axe/axe-report.html" },
+    { "label": "pa11y", "href": "pa11y/pa11y-report.html" }
+  ],
+  "machine_readable": [
+    { "label": "lint/test-suite-findings.json",      "href": "lint/test-suite-findings.json",      "size_kb": 403.9 },
+    { "label": "alfa-full/test-suite-findings.json", "href": "alfa-full/test-suite-findings.json", "size_kb": 1.0 },
+    { "label": "pa11y/test-suite-findings.json",     "href": "pa11y/test-suite-findings.json",     "size_kb": 8.4 }
+  ],
+  "tests": [
+    {
+      "test": "alfa-full",
+      "tool": "siteimprove-alfa",
+      "profile": {
+        "key": "comprehensive",
+        "name": "Comprehensive Mode (All WCAG Levels + Best Practices)",
+        "tags": ["wcag2a", "wcag2aa", "wcag2aaa", "wcag21a", "wcag21aa", "wcag21aaa", "best-practice"],
+        "severity_levels": ["critical", "serious"]
+      },
+      "summary": {
+        "status": "findings-found",
+        "pages_tested": 5,
+        "totals_by_severity": { "critical": 0, "serious": 1, "moderate": 1, "minor": 0 },
+        "totals_by_impact": { "screen-reader": 1, "keyboard": 1, "low-vision": 0, "content": 0, "code-quality": 0 }
+      },
+      "findings": [
+        {
+          "id": "alfa:SIA-R68",
+          "rule_id": "SIA-R68",
+          "rule_url": "https://alfa.siteimprove.com/rules/sia-r68",
+          "severity": "serious",
+          "impact_category": "screen-reader",
+          "headline": "Element has unsupported ARIA role",
+          "description": "Element with an explicit role attribute does not have a valid value from the WAI-ARIA specification.",
+          "fix_hint": "Use a valid ARIA role from the WAI-ARIA spec, or remove the role attribute and rely on native semantics.",
+          "wcag_criteria": ["4.1.2"],
+          "tags": ["wai-aria"],
+          "occurrences": 2,
+          "locations": [
+            { "kind": "page", "path": "/", "selector": "[role=\"banner-section\"]", "occurrences": 1 },
+            { "kind": "page", "path": "/home", "selector": "[role=\"banner-section\"]", "occurrences": 1 }
+          ]
+        },
+        {
+          "id": "alfa:SIA-R111",
+          "rule_id": "SIA-R111",
+          "rule_url": "https://alfa.siteimprove.com/rules/sia-r111",
+          "severity": "moderate",
+          "impact_category": "keyboard",
+          "headline": "Click target smaller than 44×44 pixels",
+          "description": "This rule checks that elements that can receive pointer events have a size of at least 44×44 pixels.",
+          "fix_hint": "Make tappable controls at least 44×44 CSS pixels. Touch users miss targets that are too small.",
+          "wcag_criteria": ["2.5.5"],
+          "occurrences": 53,
+          "locations": [
+            { "kind": "page", "path": "/", "occurrences": 10 },
+            { "kind": "page", "path": "/home", "occurrences": 11 },
+            { "kind": "page", "path": "/404-page-not-found", "occurrences": 11 },
+            { "kind": "page", "path": "/403-forbidden", "occurrences": 10 },
+            { "kind": "page", "path": "/accessibility", "occurrences": 11 }
+          ]
+        }
+      ]
+    },
+    {
+      "test": "axe",
+      "tool": "axe-core",
+      "profile": {
+        "key": "comprehensive",
+        "name": "Comprehensive Mode (All WCAG Levels + Best Practices)",
+        "tags": ["wcag2a", "wcag2aa", "wcag2aaa", "wcag21a", "wcag21aa", "wcag21aaa", "best-practice"],
+        "severity_levels": ["critical", "serious"]
+      },
+      "summary": {
+        "status": "findings-found",
+        "pages_tested": 5,
+        "totals_by_severity": { "critical": 0, "serious": 5, "moderate": 0, "minor": 0 },
+        "totals_by_impact": { "screen-reader": 5, "keyboard": 0, "low-vision": 0, "content": 0, "code-quality": 0 }
+      },
+      "findings": [
+        {
+          "id": "axe:image-alt",
+          "rule_id": "image-alt",
+          "rule_url": "https://dequeuniversity.com/rules/axe/4.7/image-alt",
+          "severity": "serious",
+          "impact_category": "screen-reader",
+          "headline": "Image without alt text",
+          "description": "Images must have alternate text.",
+          "fix_hint": "Add an alt attribute that describes the image. Use alt=\"\" only when the image is purely decorative.",
+          "wcag_criteria": ["1.1.1"],
+          "occurrences": 5,
+          "locations": [
+            { "kind": "page", "path": "/", "selector": "img.hero-graphic", "occurrences": 1 },
+            { "kind": "page", "path": "/home", "selector": "img.hero-graphic", "occurrences": 1 },
+            { "kind": "page", "path": "/accessibility", "selector": ".content img:nth-child(2)", "occurrences": 1 },
+            { "kind": "page", "path": "/404-page-not-found", "selector": "img.error-illustration", "occurrences": 1 },
+            { "kind": "page", "path": "/403-forbidden", "selector": "img.error-illustration", "occurrences": 1 }
+          ]
+        }
+      ]
+    },
+    {
+      "test": "pa11y",
+      "tool": "pa11y-ci",
+      "profile": {
+        "key": "comprehensive",
+        "name": "Comprehensive Mode (All WCAG Levels + Best Practices)",
+        "tags": ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"],
+        "severity_levels": ["critical", "serious"]
+      },
+      "summary": {
+        "status": "findings-found",
+        "pages_tested": 4,
+        "totals_by_severity": { "critical": 0, "serious": 4, "moderate": 20, "minor": 0 },
+        "totals_by_impact": { "screen-reader": 4, "keyboard": 0, "low-vision": 0, "content": 20, "code-quality": 0 }
+      },
+      "findings": [
+        {
+          "id": "pa11y:WCAG2AA.Principle1.Guideline1_1.1_1_1.H37",
+          "rule_id": "WCAG2AA.Principle1.Guideline1_1.1_1_1.H37",
+          "severity": "serious",
+          "impact_category": "screen-reader",
+          "headline": "Image without alt text",
+          "description": "Img element is the only content of the link, but is missing alt text. The alt text should describe the purpose of the link.",
+          "fix_hint": "Add an alt attribute that describes the image. Use alt=\"\" only when the image is purely decorative.",
+          "wcag_criteria": ["1.1.1"],
+          "occurrences": 4,
+          "locations": [
+            { "kind": "page", "path": "/home", "selector": "header > a > img", "occurrences": 1 },
+            { "kind": "page", "path": "/", "selector": "header > a > img", "occurrences": 1 },
+            { "kind": "page", "path": "/accessibility", "selector": "header > a > img", "occurrences": 1 },
+            { "kind": "page", "path": "/404-page-not-found", "selector": "header > a > img", "occurrences": 1 }
+          ]
+        },
+        {
+          "id": "pa11y:WCAG2AA.Principle2.Guideline2_4.2_4_4.H77",
+          "rule_id": "WCAG2AA.Principle2.Guideline2_4.2_4_4.H77",
+          "severity": "moderate",
+          "impact_category": "content",
+          "headline": "Link text not unique enough",
+          "description": "Anchor element found with link content, but no href attribute or aria-haspopup attribute or aria-expanded attribute.",
+          "fix_hint": "Replace generic link text with text that describes the destination.",
+          "wcag_criteria": ["2.4.4"],
+          "occurrences": 20,
+          "locations": [
+            { "kind": "page", "path": "/", "selector": ".sidebar > ul > li > a", "occurrences": 6 },
+            { "kind": "page", "path": "/home", "selector": ".sidebar > ul > li > a", "occurrences": 6 },
+            { "kind": "page", "path": "/accessibility", "selector": ".sidebar > ul > li > a", "occurrences": 4 },
+            { "kind": "page", "path": "/404-page-not-found", "selector": ".sidebar > ul > li > a", "occurrences": 4 }
+          ]
+        }
+      ]
+    },
+    {
+      "test": "lint",
+      "tool": "lint-orchestrator",
+      "summary": {
+        "status": "findings-found",
+        "files_scanned": 681,
+        "totals_by_severity": { "critical": 0, "serious": 4, "moderate": 12, "minor": 287 },
+        "totals_by_impact": { "screen-reader": 0, "keyboard": 4, "low-vision": 0, "content": 0, "code-quality": 299 }
+      },
+      "findings": [
+        {
+          "id": "lint:stylelint:a11y/no-outline-none",
+          "rule_id": "a11y/no-outline-none",
+          "severity": "serious",
+          "impact_category": "keyboard",
+          "headline": "Focus outline removed without replacement",
+          "description": "Disallow `outline: none` without providing a visible focus indicator.",
+          "fix_hint": "Don't use outline: none without providing a visible focus indicator (custom outline, box-shadow, border).",
+          "occurrences": 4,
+          "locations": [
+            { "kind": "file", "path": "web/themes/custom/example_theme/scss/_buttons.scss", "line": 42 },
+            { "kind": "file", "path": "web/themes/custom/example_theme/scss/_links.scss", "line": 18 },
+            { "kind": "file", "path": "web/themes/custom/example_subtheme/scss/_buttons.scss", "line": 56 },
+            { "kind": "file", "path": "web/modules/custom/example_module/css/action-panels.css", "line": 91 }
+          ]
+        },
+        {
+          "id": "lint:phpcs:Drupal.Commenting.FunctionComment.Missing",
+          "rule_id": "Drupal.Commenting.FunctionComment.Missing",
+          "severity": "minor",
+          "impact_category": "code-quality",
+          "headline": "Function missing docblock",
+          "description": "Missing function doc comment.",
+          "fix_hint": "Add a /** ... */ docblock above the function with a one-line summary.",
+          "occurrences": 287,
+          "locations": [
+            { "kind": "file", "path": "web/modules/custom/example_module/people_profiles.module", "line": 124 },
+            { "kind": "file", "path": "web/modules/custom/example_module/ssis_events.module", "line": 89 }
+          ]
+        },
+        {
+          "id": "lint:stylelint:declaration-block-no-redundant-longhand-properties",
+          "rule_id": "declaration-block-no-redundant-longhand-properties",
+          "severity": "moderate",
+          "impact_category": "code-quality",
+          "headline": "Redundant longhand CSS properties",
+          "description": "Expected shorthand property instead of separate longhand declarations.",
+          "fix_hint": "Combine separate longhand declarations into the equivalent shorthand (e.g. margin instead of margin-top + margin-right + margin-bottom + margin-left).",
+          "occurrences": 12,
+          "locations": [
+            { "kind": "file", "path": "web/themes/custom/example_theme/scss/_layout.scss", "line": 22 }
+          ]
+        }
+      ]
+    }
+  ]
+}

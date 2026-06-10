@@ -1,0 +1,4 @@
+# Rendered preview artifacts (template + sample data → preview*.html)
+# Sample data fixtures (sample-*.json) are tracked.
+preview.html
+preview-clean.html

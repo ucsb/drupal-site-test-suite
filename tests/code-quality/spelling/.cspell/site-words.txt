@@ -1,0 +1,13 @@
+# Per-site cspell dictionary — populated by downstream sites, not the upstream.
+#
+# This file ships empty from the upstream. Downstream sites add their own
+# project terms (custom-module identifiers, department names, contributor
+# names, brand terms, etc.) one per line, sorted.
+#
+# To prevent upstream pulls from clobbering local additions, run once per
+# site checkout:
+#
+#   git update-index --skip-worktree tests/code-quality/.cspell/site-words.txt
+#
+# To start tracking changes again (e.g., to push a site addition upstream),
+# reverse with `--no-skip-worktree`.

@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Rule headline overrides",
+  "description": "Plain-language overrides for tool-native rule output. Lookup key in `rules` is `<test>:<rule_id>` (where `test` is the test identifier — alfa, axe, pa11y, lint, etc.). The unified report shell uses these overrides to render site-builder-friendly headlines, impact categories, and fix hints; tool-native messages remain available in the technical detail block on each finding.",
+  "type": "object",
+  "required": ["rules"],
+  "properties": {
+    "_comment": {
+      "type": "string",
+      "description": "Free-form note for maintainers; ignored by consumers."
+    },
+    "rules": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "required": ["headline", "impact_category"],
+        "properties": {
+          "headline": {
+            "type": "string",
+            "description": "Plain-language one-liner shown by default."
+          },
+          "impact_category": {
+            "type": "string",
+            "enum": ["screen-reader", "keyboard", "low-vision", "content", "code-quality", "uncategorized"],
+            "description": "User-facing axis used to group findings in the unified report."
+          },
+          "severity": {
+            "type": "string",
+            "enum": ["critical", "serious", "moderate", "minor"],
+            "description": "Optional severity override when the tool's native severity doesn't match the user-impact tier."
+          },
+          "fix_hint": {
+            "type": "string",
+            "description": "Plain-language remediation hint."
+          },
+          "tags": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Per-finding tags attached to every emitted finding for this rule (e.g. ['wai-aria'] for ARIA-targeted rules). Used by the report shell for fine-grained filter chips."
+          }
+        },
+        "additionalProperties": false
+      }
+    }
+  }
+}

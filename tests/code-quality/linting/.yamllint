@@ -1,0 +1,34 @@
+extends: default
+
+rules:
+  # Drupal YAML files often have longer lines
+  line-length:
+    max: 120
+    level: warning
+
+  # Allow empty values in YAML (common in Drupal)
+  empty-values:
+    forbid-in-block-mappings: false
+    forbid-in-flow-mappings: false
+
+  # Allow trailing spaces in some cases
+  trailing-spaces: enable
+
+  # Indentation should be 2 spaces (Drupal standard)
+  indentation:
+    spaces: 2
+    indent-sequences: true
+    check-multi-line-strings: false
+
+  # Allow comments to start anywhere
+  comments-indentation: disable
+
+  # Allow empty lines
+  empty-lines:
+    max-start: 2
+    max-end: 1
+    max: 2
+
+  # Allow hyphens in names (common in Drupal)
+  hyphens:
+    max-spaces-after: 1

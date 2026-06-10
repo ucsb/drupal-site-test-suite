@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Accessibility, Security, and Code Quality Report Branding",
+  "description": "Org-specific copy for test suite reports. Downstream forks override this file with their own copy; the report templates read from it at generation time. Strings only — no logic.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "org_name",
+    "report_title_prefix",
+    "report_footer_credit"
+  ],
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "Pointer to this schema for editor validation"
+    },
+    "org_name": {
+      "type": "string",
+      "description": "Full organization or project name shown in titles and credits"
+    },
+    "org_short_name": {
+      "type": "string",
+      "description": "Short org name for compact contexts (tab titles, breadcrumbs)"
+    },
+    "org_url": {
+      "type": "string",
+      "format": "uri",
+      "description": "Canonical org or project URL"
+    },
+    "support_url": {
+      "type": "string",
+      "format": "uri",
+      "description": "Where contributors go for help with the project"
+    },
+    "report_title_prefix": {
+      "type": "string",
+      "description": "Prefix prepended to report titles (e.g. '<project name> — Linting Report')"
+    },
+    "report_intro_paragraph": {
+      "type": "string",
+      "description": "Brief introductory paragraph shown at the top of reports explaining scope and audience"
+    },
+    "report_footer_credit": {
+      "type": "string",
+      "description": "Single-line credit shown in the report footer"
+    }
+  }
+}

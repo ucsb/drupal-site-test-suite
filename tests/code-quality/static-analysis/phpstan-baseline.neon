@@ -1,0 +1,14 @@
+# PHPStan baseline — ships EMPTY in the test suite.
+#
+# Each adopting site generates its own baseline against its own custom code:
+#   vendor/bin/phpstan analyse -c tests/code-quality/static-analysis/phpstan.neon \
+#     --generate-baseline tests/code-quality/static-analysis/phpstan-baseline.neon
+#
+# Paths must be anchored to %currentWorkingDirectory% (the repo root, where
+# PHPStan runs), not relative to this file. `phpstan --generate-baseline` writes
+# file-relative paths; after regenerating, re-anchor them
+# (path: ../../../X  ->  path: %currentWorkingDirectory%/X).
+#
+# This file is consumer-owned: do not overwrite it on suite updates.
+parameters:
+	ignoreErrors: []

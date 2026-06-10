@@ -1,0 +1,40 @@
+{
+  "$schema": "./custom-paths.schema.json",
+  "_comment": "Extras-and-overrides config for custom-code path discovery. composer.json's extra.installer-paths is the canonical source for where custom modules / themes / profiles live; this file declares only surfaces composer doesn't know about (drush commands, repo-level docs, workflow YAML), plus optional overrides for sites that organize custom code outside installer-paths.",
+  "extras": {
+    "custom_drush": [
+      "drush/Commands/**"
+    ],
+    "custom_php_other": [
+      "scripts/**/*.php"
+    ],
+    "custom_js_other": [],
+    "custom_css_other": [],
+    "custom_md": [
+      "README.md",
+      "CHANGELOG.md",
+      "docs/**/*.md",
+      "tests/**/*.md",
+      ".github/**/*.md",
+      "drush/**/*.md"
+    ],
+    "custom_workflows": [
+      ".github/workflows/**/*.{yml,yaml}",
+      ".github/actions/**/action.{yml,yaml}"
+    ]
+  },
+  "installer_paths_overrides": {
+    "custom_modules": [],
+    "custom_themes": [],
+    "custom_profiles": []
+  },
+  "exclude": [
+    "**/vendor/**",
+    "**/node_modules/**",
+    "web/core/**",
+    "web/modules/contrib/**",
+    "web/themes/contrib/**",
+    "web/profiles/contrib/**"
+  ],
+  "info_yml_autodiscovery": true
+}

@@ -1,0 +1,515 @@
+{
+  "$schema": "./rule-headlines.schema.json",
+  "_comment": "Plain-language overrides for tool-native rule output. Lookup key is `<test>:<rule_id>` (where `test` is alfa / axe / pa11y / lint / etc.). Add an entry when the tool's native message is jargony OR when a Drupal-specific fix hint adds value the generic message can't. Otherwise the emitter falls through to the tool's native message + tool-specific impact_category default — most lint rules don't need an entry here.",
+  "rules": {
+    "alfa:SIA-R2": {
+      "headline": "Image without alt text",
+      "impact_category": "screen-reader",
+      "severity": "serious",
+      "fix_hint": "Add an alt attribute that describes the image. Use alt=\"\" only when the image is purely decorative."
+    },
+    "alfa:SIA-R1": {
+      "headline": "Page is missing a title",
+      "impact_category": "content",
+      "severity": "serious",
+      "fix_hint": "Add a non-empty, descriptive <title> element in the page <head> — screen-reader users rely on it to identify the page."
+    },
+    "alfa:SIA-R4": {
+      "headline": "Page is missing a valid language",
+      "impact_category": "content",
+      "severity": "serious",
+      "fix_hint": "Set a valid lang attribute on the <html> element (e.g. lang=\"en\") so assistive tech pronounces content correctly."
+    },
+    "alfa:SIA-R11": {
+      "headline": "Link has no accessible name",
+      "impact_category": "screen-reader",
+      "severity": "serious",
+      "fix_hint": "Give the link visible text, or an aria-label / aria-labelledby / title that describes its destination."
+    },
+    "alfa:SIA-R12": {
+      "headline": "Button has no accessible name",
+      "impact_category": "screen-reader",
+      "severity": "serious",
+      "fix_hint": "Give the button visible text or an aria-label that describes its action."
+    },
+    "alfa:SIA-R14": {
+      "headline": "Visible label is not part of the accessible name",
+      "impact_category": "screen-reader",
+      "severity": "moderate",
+      "fix_hint": "Ensure the control's accessible name includes its visible label text — speech-input users say the visible label to activate it."
+    },
+    "alfa:SIA-R16": {
+      "headline": "Element is missing a required ARIA state or property",
+      "impact_category": "screen-reader",
+      "severity": "serious",
+      "fix_hint": "Add the ARIA states/properties required by the element's role (per the WAI-ARIA spec).",
+      "tags": ["wai-aria"]
+    },
+    "alfa:SIA-R64": {
+      "headline": "Heading has no accessible name",
+      "impact_category": "content",
+      "severity": "serious",
+      "fix_hint": "Give the heading non-empty text content (or an accessible name) so it appears in the screen-reader heading list."
+    },
+    "alfa:SIA-R87": {
+      "headline": "No skip link to the main content",
+      "impact_category": "keyboard",
+      "severity": "moderate",
+      "fix_hint": "Make the first focusable element a skip link (visible on focus) that targets the main content region."
+    },
+    "alfa:SIA-R9": {
+      "headline": "Link text not unique enough to identify the destination",
+      "impact_category": "screen-reader",
+      "severity": "moderate",
+      "fix_hint": "Replace generic \"Click here\" / \"Read more\" links with text that describes where the link goes."
+    },
+    "alfa:SIA-R17": {
+      "headline": "Element hidden from screen readers but still keyboard-reachable",
+      "impact_category": "keyboard",
+      "severity": "serious",
+      "fix_hint": "If the element is hidden from assistive tech, also remove it from the keyboard tab order (or vice-versa). Pick one.",
+      "tags": ["wai-aria"]
+    },
+    "alfa:SIA-R66": {
+      "headline": "Text contrast lower than WCAG minimum",
+      "impact_category": "low-vision",
+      "severity": "serious",
+      "fix_hint": "Increase the contrast ratio to at least 4.5:1 for body text or 3:1 for large text (18pt+ or 14pt+ bold)."
+    },
+    "alfa:SIA-R68": {
+      "headline": "Element has unsupported ARIA role",
+      "impact_category": "screen-reader",
+      "severity": "serious",
+      "fix_hint": "Use a valid ARIA role from the WAI-ARIA spec, or remove the role attribute and rely on native semantics.",
+      "tags": ["wai-aria"]
+    },
+    "alfa:SIA-R111": {
+      "headline": "Click target smaller than 44×44 pixels",
+      "impact_category": "keyboard",
+      "severity": "moderate",
+      "fix_hint": "Make tappable controls at least 44×44 CSS pixels. Touch users miss targets that are too small."
+    },
+
+    "axe:image-alt": {
+      "headline": "Image without alt text",
+      "impact_category": "screen-reader",
+      "severity": "serious",
+      "fix_hint": "Add an alt attribute. Decorative images get alt=\"\" so screen readers skip them."
+    },
+    "axe:link-name": {
+      "headline": "Link without accessible text",
+      "impact_category": "screen-reader",
+      "severity": "serious",
+      "fix_hint": "Add visible text or an aria-label. Icon-only links need a screen-reader-visible label."
+    },
+    "axe:button-name": {
+      "headline": "Button without accessible text",
+      "impact_category": "screen-reader",
+      "severity": "serious",
+      "fix_hint": "Add text inside the button or use aria-label. Icon-only buttons need a label assistive tech can read."
+    },
+    "axe:color-contrast": {
+      "headline": "Text contrast lower than WCAG minimum",
+      "impact_category": "low-vision",
+      "severity": "serious",
+      "fix_hint": "4.5:1 for body text, 3:1 for large text (18pt+ or 14pt+ bold). Check both light and dark themes if the site supports both."
+    },
+    "axe:duplicate-id": {
+      "headline": "Duplicate id on the page",
+      "impact_category": "code-quality",
+      "severity": "serious",
+      "fix_hint": "ids must be unique. Repeated ids confuse aria-labelledby, aria-describedby, and label[for] associations."
+    },
+    "axe:heading-order": {
+      "headline": "Heading levels skip a step (e.g., h1 → h3)",
+      "impact_category": "screen-reader",
+      "severity": "moderate",
+      "fix_hint": "Headings should descend in order. Skipping levels breaks document outline navigation in screen readers."
+    },
+    "axe:label": {
+      "headline": "Form control without an associated label",
+      "impact_category": "screen-reader",
+      "severity": "serious",
+      "fix_hint": "Wrap the input in a <label>, or use <label for=\"id\">, or aria-labelledby. Placeholders are NOT labels."
+    },
+    "axe:landmark-one-main": {
+      "headline": "Page is missing a <main> landmark",
+      "impact_category": "screen-reader",
+      "severity": "moderate",
+      "fix_hint": "Wrap the primary content in <main> so screen-reader users can jump straight to it."
+    },
+    "axe:region": {
+      "headline": "Content sits outside any landmark",
+      "impact_category": "screen-reader",
+      "severity": "moderate",
+      "fix_hint": "Place all visible content inside a landmark (<main>, <nav>, <aside>, <footer>, etc.) so screen-reader users can navigate by section."
+    },
+    "axe:aria-allowed-attr": {
+      "headline": "ARIA attribute not allowed on this role",
+      "impact_category": "screen-reader",
+      "severity": "serious",
+      "fix_hint": "Remove the disallowed ARIA attribute or change the element's role to one that supports it. Each ARIA role has a fixed set of allowed attributes (see WAI-ARIA spec).",
+      "tags": ["wai-aria"]
+    },
+    "axe:aria-allowed-role": {
+      "headline": "ARIA role not allowed on this element",
+      "impact_category": "screen-reader",
+      "severity": "moderate",
+      "fix_hint": "Remove the role or change the element. Some HTML elements have implicit roles that conflict with explicit ARIA roles.",
+      "tags": ["wai-aria"]
+    },
+    "axe:aria-command-name": {
+      "headline": "ARIA command without an accessible name",
+      "impact_category": "screen-reader",
+      "severity": "serious",
+      "fix_hint": "Add aria-label, aria-labelledby, or visible text to elements with role=\"button\" / \"link\" / \"menuitem\" so screen readers can announce them.",
+      "tags": ["wai-aria"]
+    },
+    "axe:aria-hidden-focus": {
+      "headline": "Element hidden from screen readers but still keyboard-focusable",
+      "impact_category": "keyboard",
+      "severity": "serious",
+      "fix_hint": "If the element is hidden via aria-hidden, also remove it from the tab order (tabindex=\"-1\" or remove). Keyboard users should never reach content screen readers can't.",
+      "tags": ["wai-aria"]
+    },
+    "axe:aria-input-field-name": {
+      "headline": "ARIA input field without an accessible name",
+      "impact_category": "screen-reader",
+      "severity": "serious",
+      "fix_hint": "Add aria-label or aria-labelledby to elements with role=\"textbox\" / \"combobox\" / \"searchbox\" / \"spinbutton\" / \"slider\".",
+      "tags": ["wai-aria"]
+    },
+    "axe:aria-required-attr": {
+      "headline": "ARIA role missing a required attribute",
+      "impact_category": "screen-reader",
+      "severity": "serious",
+      "fix_hint": "Each ARIA role has required states/properties (e.g., role=\"checkbox\" needs aria-checked). Add the missing attribute or change the role.",
+      "tags": ["wai-aria"]
+    },
+    "axe:aria-required-children": {
+      "headline": "ARIA role missing required child roles",
+      "impact_category": "screen-reader",
+      "severity": "serious",
+      "fix_hint": "Container roles (e.g., role=\"list\", \"menu\", \"tablist\") require specific child roles. Add the missing children or change the container role.",
+      "tags": ["wai-aria"]
+    },
+    "axe:aria-required-parent": {
+      "headline": "ARIA role missing required parent role",
+      "impact_category": "screen-reader",
+      "severity": "serious",
+      "fix_hint": "Some ARIA roles (e.g., role=\"listitem\", \"menuitem\", \"tab\") only make sense inside a specific parent role. Wrap them or change the role.",
+      "tags": ["wai-aria"]
+    },
+    "axe:aria-roles": {
+      "headline": "Invalid ARIA role value",
+      "impact_category": "screen-reader",
+      "severity": "serious",
+      "fix_hint": "Use a valid role from the WAI-ARIA spec (see https://www.w3.org/TR/wai-aria/#role_definitions). Typos like role=\"buton\" silently break assistive tech.",
+      "tags": ["wai-aria"]
+    },
+    "axe:aria-toggle-field-name": {
+      "headline": "ARIA toggle field without an accessible name",
+      "impact_category": "screen-reader",
+      "severity": "serious",
+      "fix_hint": "Add aria-label / aria-labelledby / visible text to role=\"checkbox\" / \"radio\" / \"switch\" / \"menuitemcheckbox\" / \"menuitemradio\".",
+      "tags": ["wai-aria"]
+    },
+    "axe:aria-tooltip-name": {
+      "headline": "ARIA tooltip without an accessible name",
+      "impact_category": "screen-reader",
+      "severity": "serious",
+      "fix_hint": "Add aria-label or aria-labelledby to role=\"tooltip\" elements.",
+      "tags": ["wai-aria"]
+    },
+    "axe:aria-valid-attr": {
+      "headline": "ARIA attribute name is not valid",
+      "impact_category": "screen-reader",
+      "severity": "serious",
+      "fix_hint": "Check spelling — only attributes from the WAI-ARIA spec are recognized (e.g., aria-labelledby, aria-describedby). Typos are silently ignored by assistive tech.",
+      "tags": ["wai-aria"]
+    },
+    "axe:aria-valid-attr-value": {
+      "headline": "ARIA attribute has an invalid value",
+      "impact_category": "screen-reader",
+      "severity": "serious",
+      "fix_hint": "Each ARIA attribute has an enumerated set of valid values (e.g., aria-expanded must be \"true\" / \"false\"). Verify against the WAI-ARIA spec.",
+      "tags": ["wai-aria"]
+    },
+    "axe:bypass": {
+      "headline": "Page lacks a way to bypass repeated content",
+      "impact_category": "keyboard",
+      "severity": "serious",
+      "fix_hint": "Add a skip-to-main-content link as the first focusable element, or use landmark roles (<main>, <nav>) so keyboard users can jump past navigation."
+    },
+    "axe:document-title": {
+      "headline": "Page is missing a <title>",
+      "impact_category": "screen-reader",
+      "severity": "moderate",
+      "fix_hint": "Every page needs a <title> in <head> that uniquely describes its content. Drupal usually fills this from the node title — verify the head output."
+    },
+    "axe:frame-title": {
+      "headline": "<iframe> missing a title attribute",
+      "impact_category": "screen-reader",
+      "severity": "serious",
+      "fix_hint": "Add title=\"…\" to every <iframe>. Screen readers announce this so users know what the frame contains before entering it."
+    },
+    "axe:html-has-lang": {
+      "headline": "<html> element missing lang attribute",
+      "impact_category": "screen-reader",
+      "severity": "serious",
+      "fix_hint": "Add lang=\"en\" (or appropriate language code) to <html>. Screen readers use this to switch pronunciation / voice."
+    },
+    "axe:html-lang-valid": {
+      "headline": "<html> lang attribute is invalid",
+      "impact_category": "screen-reader",
+      "severity": "serious",
+      "fix_hint": "Use a valid BCP 47 language tag (e.g., \"en\", \"en-US\", \"es\"). Custom strings won't trigger the right screen-reader voice."
+    },
+    "axe:image-redundant-alt": {
+      "headline": "Alt text repeats nearby visible text",
+      "impact_category": "content",
+      "severity": "minor",
+      "fix_hint": "Screen readers will announce the same content twice. Use alt=\"\" if the image is decorative, or write alt text that adds information the surrounding text doesn't."
+    },
+    "axe:input-button-name": {
+      "headline": "<input type=\"button\"> without an accessible name",
+      "impact_category": "screen-reader",
+      "severity": "serious",
+      "fix_hint": "Set the value attribute (e.g., value=\"Submit\") or add aria-label. Otherwise screen readers announce \"button\" with no context."
+    },
+    "axe:landmark-banner-is-top-level": {
+      "headline": "Banner landmark nested inside another landmark",
+      "impact_category": "screen-reader",
+      "severity": "moderate",
+      "fix_hint": "Move <header role=\"banner\"> to the top level of the document. Nested banner landmarks confuse landmark navigation in screen readers."
+    },
+    "axe:landmark-unique": {
+      "headline": "Duplicate landmark roles need unique labels",
+      "impact_category": "screen-reader",
+      "severity": "moderate",
+      "fix_hint": "When multiple landmarks share a role (e.g., two <nav>s), give each a distinct aria-label so screen-reader users can tell them apart."
+    },
+    "axe:link-in-text-block": {
+      "headline": "Link not visually distinguishable from surrounding text",
+      "impact_category": "low-vision",
+      "severity": "moderate",
+      "fix_hint": "Color alone isn't enough (3:1 contrast against the surrounding text and a non-color cue like underline). Underlines are the safest signal."
+    },
+    "axe:list": {
+      "headline": "<ul> or <ol> contains non-<li> children",
+      "impact_category": "screen-reader",
+      "severity": "moderate",
+      "fix_hint": "Lists must contain only <li> elements (plus <script> / <template>). Wrap stray content in <li> or use a different element."
+    },
+    "axe:listitem": {
+      "headline": "<li> not inside <ul> / <ol> / <menu>",
+      "impact_category": "screen-reader",
+      "severity": "moderate",
+      "fix_hint": "Wrap the <li> in a <ul>, <ol>, or <menu>. Orphan list items break list-navigation shortcuts in screen readers."
+    },
+    "axe:meta-refresh": {
+      "headline": "<meta http-equiv=\"refresh\"> in <head>",
+      "impact_category": "content",
+      "severity": "serious",
+      "fix_hint": "Auto-redirects break the back button and disorient screen-reader users. Use a server-side 301 / 302 redirect or a client-side script that respects user input."
+    },
+    "axe:meta-viewport": {
+      "headline": "Meta-viewport blocks user zoom",
+      "impact_category": "low-vision",
+      "severity": "serious",
+      "fix_hint": "Remove user-scalable=no and any maximum-scale<2 from <meta name=\"viewport\">. Recommended baseline: width=device-width, initial-scale=1."
+    },
+    "axe:nested-interactive": {
+      "headline": "Interactive element nested inside another",
+      "impact_category": "keyboard",
+      "severity": "serious",
+      "fix_hint": "Avoid putting <button> inside <a> (or vice versa) — keyboard / assistive tech can't reliably target the inner control. Restructure so each interactive control is a sibling."
+    },
+    "axe:object-alt": {
+      "headline": "<object> missing alternative text",
+      "impact_category": "screen-reader",
+      "severity": "serious",
+      "fix_hint": "Provide fallback content inside the <object> element or add aria-label. Screen readers can't see embedded objects without an alternative."
+    },
+    "axe:role-img-alt": {
+      "headline": "Element with role=\"img\" missing accessible name",
+      "impact_category": "screen-reader",
+      "severity": "serious",
+      "fix_hint": "Add aria-label or aria-labelledby to the element. Without it, screen readers announce \"image\" with no context."
+    },
+    "axe:scrollable-region-focusable": {
+      "headline": "Scrollable region not keyboard-focusable",
+      "impact_category": "keyboard",
+      "severity": "serious",
+      "fix_hint": "Add tabindex=\"0\" to the scrollable container so keyboard users can scroll it. Or add a focusable child element that triggers the scroll."
+    },
+    "axe:select-name": {
+      "headline": "<select> without an accessible name",
+      "impact_category": "screen-reader",
+      "severity": "serious",
+      "fix_hint": "Wrap the <select> in <label>, use <label for=\"id\">, or add aria-label. Screen readers need a label to describe what the dropdown controls."
+    },
+    "axe:skip-link": {
+      "headline": "Skip link not focusable or pointing at a missing target",
+      "impact_category": "keyboard",
+      "severity": "moderate",
+      "fix_hint": "Verify the skip link href matches an id on the page (e.g., href=\"#main\" → <main id=\"main\">) and is focusable (no display:none / visibility:hidden when focused)."
+    },
+    "axe:svg-img-alt": {
+      "headline": "<svg> with role=\"img\" missing accessible name",
+      "impact_category": "screen-reader",
+      "severity": "serious",
+      "fix_hint": "Add a <title> child element inside the <svg>, or aria-labelledby pointing at one. SVGs without a name are silent to screen readers."
+    },
+    "axe:tabindex": {
+      "headline": "Positive tabindex disrupts natural tab order",
+      "impact_category": "keyboard",
+      "severity": "moderate",
+      "fix_hint": "Use only tabindex=\"0\" (focusable, natural order) or tabindex=\"-1\" (programmatically focusable). Positive values create unpredictable jumps for keyboard users."
+    },
+    "axe:td-headers-attr": {
+      "headline": "<td headers> references a non-existent header id",
+      "impact_category": "screen-reader",
+      "severity": "moderate",
+      "fix_hint": "Verify each id in the headers attribute matches the id of a <th> in the same table. Broken references mean screen readers announce no header for that cell."
+    },
+    "axe:th-has-data-cells": {
+      "headline": "<th> has no associated data cells",
+      "impact_category": "screen-reader",
+      "severity": "moderate",
+      "fix_hint": "Either remove the unused <th> or add data cells that reference it. A header that labels nothing is confusing in screen-reader table navigation."
+    },
+    "axe:valid-lang": {
+      "headline": "lang attribute on element is invalid",
+      "impact_category": "screen-reader",
+      "severity": "moderate",
+      "fix_hint": "Use a valid BCP 47 language tag. Inline lang attributes (e.g., on a <span>) help screen readers switch pronunciation mid-sentence."
+    },
+    "axe:video-caption": {
+      "headline": "<video> missing captions <track>",
+      "impact_category": "content",
+      "severity": "serious",
+      "fix_hint": "Add a <track kind=\"captions\" srclang=\"en\" src=\"…\"> child for every <video>. Required for deaf and hard-of-hearing users (WCAG 1.2.2)."
+    },
+
+    "pa11y:WCAG2AA.Principle1.Guideline1_1.1_1_1.H37": {
+      "headline": "Image without alt text",
+      "impact_category": "screen-reader",
+      "severity": "serious",
+      "fix_hint": "Add an alt attribute that describes the image. Use alt=\"\" only when the image is purely decorative."
+    },
+    "pa11y:WCAG2AA.Principle1.Guideline1_4.1_4_3.G18": {
+      "headline": "Text contrast lower than WCAG minimum",
+      "impact_category": "low-vision",
+      "severity": "serious",
+      "fix_hint": "Increase the contrast ratio to at least 4.5:1 for body text or 3:1 for large text."
+    },
+    "pa11y:WCAG2AA.Principle2.Guideline2_4.2_4_4.H77": {
+      "headline": "Link text not unique enough",
+      "impact_category": "screen-reader",
+      "severity": "moderate",
+      "fix_hint": "Replace generic link text with text that describes the destination."
+    },
+
+    "lint:phpcs:DrupalPractice.Objects.GlobalDrupal.GlobalDrupal": {
+      "headline": "`\\Drupal::` static call inside an injectable context",
+      "impact_category": "code-quality",
+      "severity": "moderate",
+      "fix_hint": "Inject the service via constructor or `create()` instead of calling the global container. Static calls are testing- and DI-hostile."
+    },
+
+    "lint:phpstan:drupal.containerCalls": {
+      "headline": "`\\Drupal::` static call inside an injectable class",
+      "impact_category": "code-quality",
+      "severity": "moderate",
+      "fix_hint": "Inject the service via constructor or `create()` instead of the global container. Static calls are testing- and DI-hostile."
+    },
+    "lint:phpstan:drupal.unsafeStatic": {
+      "headline": "Unsafe `new static()` outside a final class",
+      "impact_category": "code-quality",
+      "severity": "minor",
+      "fix_hint": "Mark the class final, or use `new self()` if subclasses shouldn't override the construction."
+    },
+    "lint:phpstan:property.notFound": {
+      "headline": "Access to an undefined property",
+      "impact_category": "code-quality",
+      "severity": "moderate",
+      "fix_hint": "For Drupal entity field access, use `$entity->get('field_name')->value` or cast to a more specific entity interface that declares the field."
+    },
+    "lint:phpstan:class.notFound": {
+      "headline": "Reference to an unknown class",
+      "impact_category": "code-quality",
+      "severity": "serious",
+      "fix_hint": "Check the FQCN — it may have moved (e.g., `Drupal\\Core\\Path\\PathAliasManagerInterface` is now `Drupal\\path_alias\\AliasManagerInterface`)."
+    },
+    "lint:phpstan:classConstant.deprecated": {
+      "headline": "Deprecated class constant in use",
+      "impact_category": "code-quality",
+      "severity": "moderate",
+      "fix_hint": "Replace with the modern equivalent. Drupal core's deprecation message tells you what to switch to (e.g., `FileSystemInterface::EXISTS_REPLACE` → `FileExists::Replace`)."
+    },
+
+    "lint:eslint:parsing-error": {
+      "headline": "JavaScript syntax error",
+      "impact_category": "code-quality",
+      "severity": "serious",
+      "fix_hint": "Fix the syntax. ESLint can't lint a file it can't parse — this blocks all other rules from running on it."
+    },
+
+    "lint:cspell:whitelist": {
+      "headline": "Use inclusive language: prefer `allowlist` over `whitelist`",
+      "impact_category": "content",
+      "severity": "moderate",
+      "fix_hint": "Replace `whitelist` / `whitelisted` with `allowlist` / `allowlisted` (or `allowed` in prose). Same for variable names where reasonable."
+    },
+    "lint:cspell:whitelisted": {
+      "headline": "Use inclusive language: prefer `allowlisted` over `whitelisted`",
+      "impact_category": "content",
+      "severity": "moderate",
+      "fix_hint": "Replace with `allowlisted`. If the term comes from an external API or library, document the binding in a comment."
+    },
+    "lint:cspell:blacklist": {
+      "headline": "Use inclusive language: prefer `blocklist` / `denylist`",
+      "impact_category": "content",
+      "severity": "moderate",
+      "fix_hint": "Replace `blacklist` with `blocklist` (general) or `denylist` (security context)."
+    },
+    "lint:cspell:blacklisted": {
+      "headline": "Use inclusive language: prefer `blocklisted` / `denylisted`",
+      "impact_category": "content",
+      "severity": "moderate",
+      "fix_hint": "Replace with `blocklisted` (general) or `denylisted` (security context)."
+    },
+    "lint:cspell:e-mail": {
+      "headline": "Use `email` (no hyphen)",
+      "impact_category": "content",
+      "severity": "minor",
+      "fix_hint": "Modern style is `email`. The hyphenated form is dated."
+    },
+    "lint:cspell:grey": {
+      "headline": "Use US spelling: `gray`",
+      "impact_category": "content",
+      "severity": "minor",
+      "fix_hint": "Replace `grey` with `gray` to match the project's US-English convention."
+    },
+    "lint:cspell:queuing": {
+      "headline": "Use the conventional spelling: `queueing`",
+      "impact_category": "content",
+      "severity": "minor",
+      "fix_hint": "Replace `queuing` with `queueing` for consistency with Drupal core's spelling."
+    },
+
+    "lint:composer:validate:lock-out-of-sync": {
+      "headline": "`composer.lock` is out of sync with `composer.json`",
+      "impact_category": "code-quality",
+      "severity": "serious",
+      "fix_hint": "Run `composer update --lock` to refresh the lock file without changing dep versions, or `composer update <package>` to bump a specific dep."
+    },
+    "lint:composer:audit:abandoned": {
+      "headline": "Abandoned composer dependency",
+      "impact_category": "security",
+      "severity": "moderate",
+      "fix_hint": "The package is no longer maintained. If a replacement is suggested, migrate. Otherwise plan a swap before security advisories accumulate."
+    }
+  }
+}

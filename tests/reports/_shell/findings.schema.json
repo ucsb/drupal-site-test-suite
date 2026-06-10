@@ -1,0 +1,213 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Test-Suite Findings",
+  "description": "Stable JSON contract emitted by every test (lint, axe, alfa, pa11y, etc.) so the unified report shell and downstream agents can consume a single shape regardless of which tool produced the data.",
+  "type": "object",
+  "required": ["schema_version", "test", "summary", "findings"],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "1.0",
+      "description": "Increment major when the shape changes incompatibly. Consumers should refuse to render unknown major versions."
+    },
+    "test": {
+      "type": "string",
+      "enum": ["lint", "phpunit", "axe", "axe-full", "axe-watcher", "axe-watcher-full", "alfa", "alfa-full", "pa11y", "reflow", "meta-viewport"],
+      "description": "Which test produced this findings file."
+    },
+    "tool": {
+      "type": "string",
+      "description": "Specific underlying tool (e.g. 'siteimprove-alfa', 'axe-core', 'pa11y-ci', 'phpcs', 'phpstan', 'eslint', 'stylelint'). Optional when the test name is sufficient."
+    },
+    "surface": {
+      "type": "object",
+      "description": "Where this run executed. Lets the report banner show '[Local / upstream]' vs '[CI / multidev pr-123]' vs '[Local / site: my-site.test]'.",
+      "required": ["context"],
+      "properties": {
+        "context": {
+          "type": "string",
+          "enum": ["local", "ci", "ci-multidev"],
+          "description": "Where the run executed. 'local' = developer machine (any base_url); 'ci' = repo-wide CI run with no deployed site (e.g. the lint job; base_url is the Actions run); 'ci-multidev' = CI on a preview/multidev environment."
+        },
+        "label": {
+          "type": "string",
+          "description": "Human-readable surface label, e.g. 'pr-123' or 'my-site.test'."
+        },
+        "base_url": {
+          "type": "string",
+          "format": "uri",
+          "description": "BASE_URL the test ran against (a11y tests only)."
+        }
+      }
+    },
+    "profile": {
+      "type": "object",
+      "description": "Which accessibility profile was applied. Optional; lint tests omit this.",
+      "properties": {
+        "key": { "type": "string", "description": "Profile preset key (strict / standard / comprehensive / custom)." },
+        "name": { "type": "string" },
+        "tags": { "type": "array", "items": { "type": "string" } },
+        "severity_levels": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "generated_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 UTC timestamp of when this findings file was emitted."
+    },
+    "duration_ms": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Wall time the test took, in milliseconds."
+    },
+    "summary": {
+      "type": "object",
+      "required": ["totals_by_severity"],
+      "description": "Pre-computed rollups so consumers don't have to re-aggregate the findings array.",
+      "properties": {
+        "totals_by_severity": {
+          "type": "object",
+          "description": "Count of findings per severity tier.",
+          "properties": {
+            "critical": { "type": "integer", "minimum": 0 },
+            "serious":  { "type": "integer", "minimum": 0 },
+            "moderate": { "type": "integer", "minimum": 0 },
+            "minor":    { "type": "integer", "minimum": 0 }
+          },
+          "additionalProperties": false
+        },
+        "totals_by_impact": {
+          "type": "object",
+          "description": "Count of findings per user-impact category. Lint findings default to 'code-quality'; composer audit findings (CVE advisories, abandoned packages) land under 'security'.",
+          "properties": {
+            "screen-reader": { "type": "integer", "minimum": 0 },
+            "keyboard":      { "type": "integer", "minimum": 0 },
+            "low-vision":    { "type": "integer", "minimum": 0 },
+            "content":       { "type": "integer", "minimum": 0 },
+            "code-quality":  { "type": "integer", "minimum": 0 },
+            "security":      { "type": "integer", "minimum": 0 },
+            "uncategorized": { "type": "integer", "minimum": 0 }
+          },
+          "additionalProperties": false
+        },
+        "pages_tested": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "How many pages this test evaluated (a11y tests only)."
+        },
+        "files_scanned": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "How many source files this test evaluated (lint tests only)."
+        },
+        "status": {
+          "type": "string",
+          "enum": ["pass", "fail", "findings-found", "skipped", "error"],
+          "description": "Overall test outcome. 'fail' = blocking failures; 'findings-found' = non-blocking findings exist; 'pass' = clean; 'skipped' = test not run; 'error' = tool itself crashed."
+        }
+      }
+    },
+    "findings": {
+      "type": "array",
+      "description": "Individual issues. May be empty if the test ran clean.",
+      "items": {
+        "type": "object",
+        "required": ["id", "severity", "headline"],
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Stable per-finding identifier, e.g. 'alfa:SIA-R111' or 'lint:phpcs:Drupal.Commenting.FunctionComment.MissingShort'. Used as a dedup key across runs."
+          },
+          "rule_id": {
+            "type": "string",
+            "description": "Tool-native rule ID without the test prefix (e.g. 'SIA-R111', 'image-alt', 'WCAG2AA.Principle1.Guideline1_1.1_1_1.H37')."
+          },
+          "rule_url": {
+            "type": "string",
+            "format": "uri",
+            "description": "Link to upstream documentation for this rule."
+          },
+          "severity": {
+            "type": "string",
+            "enum": ["critical", "serious", "moderate", "minor"],
+            "description": "Normalized severity tier across tools. Mapping is tool-specific and curated in rule-headlines.json when raw severities differ."
+          },
+          "impact_category": {
+            "type": "string",
+            "enum": ["screen-reader", "keyboard", "low-vision", "content", "code-quality", "security", "uncategorized"],
+            "description": "User-facing axis used for grouping in the unified shell's Issues section. 'security' covers CVE advisories and abandoned-package replacements surfaced by composer audit (and similar future scanners)."
+          },
+          "headline": {
+            "type": "string",
+            "description": "Plain-language one-liner the site builder sees (e.g. 'Image without alt text — 4 instances'). Curated in rule-headlines.json when the tool's native message is too jargony."
+          },
+          "description": {
+            "type": "string",
+            "description": "Tool-native description / message. Shown alongside rule ID in the technical detail block."
+          },
+          "fix_hint": {
+            "type": "string",
+            "description": "Plain-language remediation hint. From rule-headlines.json when curated, else from the tool's native fix recommendation."
+          },
+          "wcag_criteria": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "WCAG success criteria this finding violates (e.g. ['1.1.1', '4.1.2']). a11y tests only."
+          },
+          "occurrences": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "How many times this finding appears in the data (across pages or files)."
+          },
+          "locations": {
+            "type": "array",
+            "description": "Where the finding manifested. Each entry covers one page or one file.",
+            "items": {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "enum": ["page", "file"],
+                  "description": "Whether this location is a rendered URL or a source file."
+                },
+                "path": {
+                  "type": "string",
+                  "description": "URL path (for 'page') or file path (for 'file'). File paths are always repo-relative and normalized to a consistent form across every lane (e.g. web/modules/custom/<m>/..., web/themes/custom/<t>/...), so id-based dedup and downstream file resolution are reliable."
+                },
+                "line": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "description": "Line number for source-file findings."
+                },
+                "column": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "description": "Column number for source-file findings."
+                },
+                "selector": {
+                  "type": "string",
+                  "description": "CSS selector for the offending DOM element (a11y tests only)."
+                },
+                "snippet": {
+                  "type": "string",
+                  "description": "HTML or source snippet showing the offending content."
+                },
+                "occurrences": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "description": "Times this finding occurs at this specific location."
+                }
+              }
+            }
+          },
+          "tags": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Free-form tags for filtering (e.g. 'wai-aria', 'best-practice', 'inconclusive', 'cantTell')."
+          }
+        }
+      }
+    }
+  },
+  "additionalProperties": false
+}

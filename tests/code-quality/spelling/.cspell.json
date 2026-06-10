@@ -1,0 +1,75 @@
+{
+  "version": "0.2",
+  "language": "en,en-US",
+  "flagWords": [
+    "blacklist",
+    "blacklists",
+    "blacklisted",
+    "e-mail",
+    "grey",
+    "queuing",
+    "whitelist",
+    "whitelists",
+    "whitelisted"
+  ],
+  "dictionaryDefinitions": [
+    {
+      "name": "upstream",
+      "path": "./.cspell/upstream-words.txt",
+      "addWords": true
+    },
+    {
+      "name": "site",
+      "path": "./.cspell/site-words.txt",
+      "addWords": true
+    }
+  ],
+  "dictionaries": [
+    "upstream",
+    "site",
+    "php",
+    "html",
+    "css",
+    "softwareTerms",
+    "typescript",
+    "node",
+    "npm",
+    "bash",
+    "companies",
+    "fonts",
+    "filetypes",
+    "fullstack",
+    "html-symbol-entities",
+    "lorem-ipsum",
+    "misc",
+    "people-names"
+  ],
+  "ignorePaths": [
+    "**/vendor/**",
+    "**/node_modules/**",
+    "**/.cache/**",
+    "**/bin/latest/**",
+    "**/themes/*/bootstrap/**",
+    "**/core/**",
+    "**/modules/contrib/**",
+    "**/themes/contrib/**",
+    "**/profiles/contrib/**",
+    "**/*.min.*",
+    "**/*.lock",
+    "LICENSE",
+    "*.svg"
+  ],
+  "ignoreRegExpList": [
+    "data:image\\/svg\\+xml,[^\\s)\"']+",
+    "application\\/vnd\\.[a-z0-9.+-]+",
+    "application\\/x-[a-z0-9.+-]+",
+    "video\\/[a-z0-9.+-]+",
+    "audio\\/[a-z0-9.+-]+",
+    "image\\/[a-z0-9.+-]+",
+    "&[a-z]+;",
+    "[A-Fa-f0-9]{32,}",
+    "https?:\\/\\/[^\\s)\"']+",
+    "#[A-Fa-f0-9]{3,8}\\b",
+    "\\b[A-Fa-f0-9]{6}\\b"
+  ]
+}

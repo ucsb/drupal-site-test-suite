@@ -1,0 +1,101 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Custom-code path extras and overrides",
+  "description": "composer.json's extra.installer-paths is the canonical source for where custom modules / themes / profiles live; this file declares only the surfaces composer doesn't know about (drush commands, repo docs, workflow YAML) plus optional overrides for non-standard layouts. Globs use picomatch / minimatch syntax — the same patterns cspell, eslint, and markdownlint-cli2 already accept.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "extras",
+    "installer_paths_overrides",
+    "exclude",
+    "info_yml_autodiscovery"
+  ],
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "Pointer to this schema for editor validation"
+    },
+    "_comment": {
+      "type": "string",
+      "description": "Free-form note explaining this file's role; ignored by tools"
+    },
+    "extras": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Custom-code surfaces composer.json doesn't describe — drush commands, repo docs, workflow YAML, etc. Append-only by design: downstream sites add their own surfaces here without touching upstream defaults.",
+      "required": [
+        "custom_drush",
+        "custom_php_other",
+        "custom_js_other",
+        "custom_css_other",
+        "custom_md",
+        "custom_workflows"
+      ],
+      "properties": {
+        "custom_drush": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Custom drush command paths (the team writes directly under drush/Commands/, distinct from contrib drush installed at drush/Commands/contrib/)"
+        },
+        "custom_php_other": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "PHP files outside installer-paths (e.g. root-level helpers, custom integration code at src/integrations/)"
+        },
+        "custom_js_other": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "JS files outside installer-paths (e.g. build scripts under scripts/)"
+        },
+        "custom_css_other": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "CSS / SCSS files outside installer-paths"
+        },
+        "custom_md": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Upstream-authored markdown for markdownlint coverage (README, CHANGELOG, contributor docs, etc.)"
+        },
+        "custom_workflows": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "GitHub Actions workflows and composite actions (for actionlint coverage)"
+        }
+      }
+    },
+    "installer_paths_overrides": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Escape hatch for sites that organize themes / modules / profiles outside what composer.json's installer-paths cover (e.g. a theme committed directly at web/themes/myorg/ without a corresponding type:drupal-custom-theme installer entry). Empty by default. Avoid using this if you can update composer.json instead.",
+      "required": [
+        "custom_modules",
+        "custom_themes",
+        "custom_profiles"
+      ],
+      "properties": {
+        "custom_modules": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "custom_themes": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "custom_profiles": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    },
+    "exclude": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Glob patterns excluded from every form of discovery — vendor/, node_modules/, contrib code, Drupal core. Always applied regardless of whether a path is in extras or matched via installer-paths or autodiscovery."
+    },
+    "info_yml_autodiscovery": {
+      "type": "boolean",
+      "description": "When true (default), the orchestrator scans for *.info.yml files outside exclude paths and treats their parent directories as additional custom modules / themes — a safety net for sites that committed custom code without updating composer.json or this file. Set to false for strict allowlist-only behavior."
+    }
+  }
+}

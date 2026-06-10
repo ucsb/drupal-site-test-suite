@@ -1,0 +1,144 @@
+# EXAMPLE — adapt and move to .github/dependabot.yml
+# Dependabot configuration. Hybrid cadence per ecosystem:
+#   - security-updates run weekly (catches new advisories quickly)
+#   - version-updates run monthly (cuts routine PR fatigue, batches bumps)
+# Not a CI gate; the team merges these PRs and the existing test suite
+# validates each upgrade. Updates are NOT auto-installed — Dependabot only
+# opens PRs.
+version: 2
+
+updates:
+  # Composer — Drupal core + contrib + PHP dev-deps. Drupal contrib
+  # advisories surface here once they're published in the GitHub Advisory
+  # Database (which mirrors drupal.org Security Advisories with a small
+  # lag).
+
+  - package-ecosystem: "composer"
+    directory: "/"
+    applies-to: security-updates
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "07:00"
+      timezone: "America/Los_Angeles"
+    open-pull-requests-limit: 10
+    labels:
+      - "dependencies"
+      - "composer"
+      - "security"
+    commit-message:
+      prefix: "deps(security)"
+      include: "scope"
+
+  - package-ecosystem: "composer"
+    directory: "/"
+    applies-to: version-updates
+    schedule:
+      interval: "monthly"
+      day: "monday"
+      time: "07:00"
+      timezone: "America/Los_Angeles"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "composer"
+    commit-message:
+      prefix: "deps"
+      include: "scope"
+    # Group patch + minor bumps to cut PR fatigue. Major upgrades stay
+    # ungrouped so Drupal-core-style step changes get their own review.
+    groups:
+      composer-patch:
+        update-types:
+          - "patch"
+      composer-minor:
+        update-types:
+          - "minor"
+
+  # npm — test toolchain (eslint, cspell, playwright, alfa, axe-core,
+  # pa11y, etc.). Lower stakes than runtime deps — these never ship to
+  # production — but vulnerable test deps can still affect CI runners and
+  # developer machines.
+
+  - package-ecosystem: "npm"
+    directory: "/tests"
+    applies-to: security-updates
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "07:00"
+      timezone: "America/Los_Angeles"
+    open-pull-requests-limit: 10
+    labels:
+      - "dependencies"
+      - "npm"
+      - "security"
+    commit-message:
+      prefix: "deps(security)"
+      include: "scope"
+
+  - package-ecosystem: "npm"
+    directory: "/tests"
+    applies-to: version-updates
+    schedule:
+      interval: "monthly"
+      day: "monday"
+      time: "07:00"
+      timezone: "America/Los_Angeles"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "npm"
+    commit-message:
+      prefix: "deps"
+      include: "scope"
+    groups:
+      npm-patch:
+        update-types:
+          - "patch"
+      npm-minor:
+        update-types:
+          - "minor"
+
+  # GitHub Actions — pinned action versions in `.github/workflows/`.
+  # Catches when an action ships a security fix or new outputs (e.g. the
+  # `pantheon-systems/push-to-pantheon` 0.7.0 → 0.9.2 bump that surfaced
+  # new `target_env` / `target_env_url` outputs).
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    applies-to: security-updates
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "07:00"
+      timezone: "America/Los_Angeles"
+    open-pull-requests-limit: 10
+    labels:
+      - "dependencies"
+      - "github-actions"
+      - "security"
+    commit-message:
+      prefix: "ci(security)"
+      include: "scope"
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    applies-to: version-updates
+    schedule:
+      interval: "monthly"
+      day: "monday"
+      time: "07:00"
+      timezone: "America/Los_Angeles"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "github-actions"
+    commit-message:
+      prefix: "ci"
+      include: "scope"
+    groups:
+      actions-all:
+        update-types:
+          - "patch"
+          - "minor"

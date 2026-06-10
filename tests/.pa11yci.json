@@ -1,0 +1,14 @@
+{
+    "defaults": {
+        "standard": "WCAG2AA",
+        "includeWarnings": true,
+        "timeout": 90000,
+        "userAgent": "pa11y-ci accessibility testing",
+        "chromeLaunchConfig": {
+            "args": [
+                "--ignore-certificate-errors"
+            ]
+        }
+    },
+    "concurrency": 4
+}

@@ -1,0 +1,23 @@
+# Dependencies
+node_modules/
+
+# Generated report output (keep the report shell template under _shell/)
+tests/reports/*
+!tests/reports/_shell/
+
+# Downloaded tool binaries (editorconfig-checker, actionlint, ...) — fetched on demand
+tests/bin/
+
+# Playwright / test run artifacts
+tests/playwright-report/
+tests/test-results/
+tests/test-run-results/
+tests/.cache/
+
+# Local environment (never commit real values)
+.env
+tests/.env
+
+# OS / editor cruft
+.DS_Store
+Thumbs.db

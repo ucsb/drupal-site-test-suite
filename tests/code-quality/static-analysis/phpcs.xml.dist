@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ruleset name="drupal-test-suite">
+  <description>Drupal + DrupalPractice coding standards for custom code.</description>
+
+  <rule ref="Drupal"/>
+  <rule ref="DrupalPractice"/>
+
+  <arg name="extensions" value="engine,inc,info,install,module,php,profile,test,theme,yml"/>
+
+</ruleset>

@@ -1,0 +1,15 @@
+{
+  "doctype-first": false,
+  "html-lang-require": false,
+  "title-require": false,
+  "h1-require": false,
+  "main-require": false,
+  "head-script-disabled": false,
+  "spec-char-escape": false,
+  "tag-pair": false,
+  "alt-require": true,
+  "input-requires-label": true,
+  "button-type-require": true,
+  "id-unique": true,
+  "frame-title-require": true
+}

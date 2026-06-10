@@ -1,0 +1,85 @@
+{
+  "schema_version": "1.0",
+  "generated_at": "2026-05-03T17:08:11Z",
+  "surface": {
+    "context": "local",
+    "label": "drupal-178 branch",
+    "base_url": "https://example.test"
+  },
+  "raw_reports": [
+    { "label": "Lint", "href": "lint/lint-report.html" },
+    { "label": "Alfa (key pages)", "href": "alfa/alfa-report.html" },
+    { "label": "Alfa Full Site", "href": "alfa-full/alfa-full-site-report.html" },
+    { "label": "axe", "href": "axe/axe-report.html" },
+    { "label": "pa11y", "href": "../pa11y/pa11y-report.html" }
+  ],
+  "machine_readable": [
+    { "label": "lint/test-suite-findings.json",      "href": "lint/test-suite-findings.json",      "size_kb": 1.2 },
+    { "label": "alfa-full/test-suite-findings.json", "href": "alfa-full/test-suite-findings.json", "size_kb": 0.9 },
+    { "label": "pa11y/test-suite-findings.json",     "href": "pa11y/test-suite-findings.json",     "size_kb": 0.8 }
+  ],
+  "tests": [
+    {
+      "test": "alfa-full",
+      "tool": "siteimprove-alfa",
+      "profile": {
+        "key": "comprehensive",
+        "name": "Comprehensive Mode (All WCAG Levels + Best Practices)",
+        "tags": ["wcag2a", "wcag2aa", "wcag2aaa", "wcag21a", "wcag21aa", "wcag21aaa", "best-practice"],
+        "severity_levels": ["critical", "serious"]
+      },
+      "summary": {
+        "status": "pass",
+        "pages_tested": 5,
+        "totals_by_severity": { "critical": 0, "serious": 0, "moderate": 0, "minor": 0 },
+        "totals_by_impact":   { "screen-reader": 0, "keyboard": 0, "low-vision": 0, "content": 0, "code-quality": 0 }
+      },
+      "findings": []
+    },
+    {
+      "test": "axe",
+      "tool": "axe-core",
+      "profile": {
+        "key": "comprehensive",
+        "name": "Comprehensive Mode (All WCAG Levels + Best Practices)",
+        "tags": ["wcag2a", "wcag2aa", "wcag2aaa", "wcag21a", "wcag21aa", "wcag21aaa", "best-practice"],
+        "severity_levels": ["critical", "serious"]
+      },
+      "summary": {
+        "status": "pass",
+        "pages_tested": 5,
+        "totals_by_severity": { "critical": 0, "serious": 0, "moderate": 0, "minor": 0 },
+        "totals_by_impact":   { "screen-reader": 0, "keyboard": 0, "low-vision": 0, "content": 0, "code-quality": 0 }
+      },
+      "findings": []
+    },
+    {
+      "test": "pa11y",
+      "tool": "pa11y-ci",
+      "profile": {
+        "key": "comprehensive",
+        "name": "Comprehensive Mode (All WCAG Levels + Best Practices)",
+        "tags": ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"],
+        "severity_levels": ["critical", "serious"]
+      },
+      "summary": {
+        "status": "pass",
+        "pages_tested": 4,
+        "totals_by_severity": { "critical": 0, "serious": 0, "moderate": 0, "minor": 0 },
+        "totals_by_impact":   { "screen-reader": 0, "keyboard": 0, "low-vision": 0, "content": 0, "code-quality": 0 }
+      },
+      "findings": []
+    },
+    {
+      "test": "lint",
+      "tool": "lint-orchestrator",
+      "summary": {
+        "status": "pass",
+        "files_scanned": 681,
+        "totals_by_severity": { "critical": 0, "serious": 0, "moderate": 0, "minor": 0 },
+        "totals_by_impact":   { "screen-reader": 0, "keyboard": 0, "low-vision": 0, "content": 0, "code-quality": 0 }
+      },
+      "findings": []
+    }
+  ]
+}

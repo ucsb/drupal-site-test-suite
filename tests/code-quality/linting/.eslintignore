@@ -1,0 +1,24 @@
+# Vendored / minified JS that the upstream doesn't author. Patterns are
+# basename-only (no `web/...` anchor) so this file stays portable if the
+# linting bundle ever relocates. The orchestrator does the same discovery
+# in JavaScript before it hands files to ESLint.
+**/*.min.js
+**/jquery.simpleWeather.js
+**/jquery.cookie.js
+**/masonry.pkgd.js
+**/eyeglass-exports.js
+
+# Contrib code is the responsibility of upstream maintainers; the
+# upstream's lint lane only covers code we ship.
+**/modules/contrib/**
+**/themes/contrib/**
+**/profiles/contrib/**
+
+# Drupal core itself.
+**/core/**
+
+# Package-manager output / build artifacts.
+**/node_modules/**
+**/dist/**
+**/build/**
+**/coverage/**
