@@ -12,7 +12,13 @@ Workflow:
 
 ## Unreleased
 
-*No unreleased changes yet — see 1.0.0 below for the current release.*
+### Changed
+
+- Converted the `drush utest:*` commandfiles from annotated-command docblocks
+  (`@command`, `@option`, `@usage`, `@bootstrap`) to PHP attributes
+  (`#[CLI\Command]` etc.). No change to command names, aliases, options, or
+  behavior; removes the Drush 12 deprecation and keeps the suite compatible
+  with Drush 13.
 
 ## 1.0.0
 

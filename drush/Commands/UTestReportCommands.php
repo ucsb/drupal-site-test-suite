@@ -3,6 +3,8 @@
 namespace Drush\Commands;
 
 use Twig\Environment;
+use Drush\Attributes as CLI;
+use Drush\Boot\DrupalBootLevels;
 use Drupal\Core\File\FileSystemInterface;
 use Drupal\file\FileRepositoryInterface;
 use Drupal\Core\StreamWrapper\StreamWrapperManagerInterface;
@@ -13,10 +15,10 @@ use Drupal\Core\StreamWrapper\StreamWrapperManagerInterface;
 class UTestReportCommands extends DrushCommands {
 
   /**
-   * @command utest:report-index
-   * @aliases utidx
-   * @bootstrap full
+   * Collect artifacts and build the HTML report index.
    */
+  #[CLI\Command(name: 'utest:report-index', aliases: ['utidx'])]
+  #[CLI\Bootstrap(level: DrupalBootLevels::FULL)]
   public function buildIndex(
     array $options = [
       'dest-uri'       => 'public://test-reports',
@@ -599,15 +601,12 @@ TWIG;
 
   /**
    * Render the unified test-suite report from per-test test-suite-findings.json files.
-   *
-   * @command utest:report-render
-   * @aliases utrender
-   * @bootstrap full
-   *
-   * @option dest-uri Where the rendered index.html lands (defaults to public://test-reports — sits alongside the per-test lane dirs).
-   * @option src-uri  Where the per-test test-suite-findings.json files live (defaults to public://test-reports).
-   * @option base-url Optional public URL to log when done.
    */
+  #[CLI\Command(name: 'utest:report-render', aliases: ['utrender'])]
+  #[CLI\Bootstrap(level: DrupalBootLevels::FULL)]
+  #[CLI\Option(name: 'dest-uri', description: 'Where the rendered index.html lands (defaults to public://test-reports — sits alongside the per-test lane dirs).')]
+  #[CLI\Option(name: 'src-uri', description: 'Where the per-test test-suite-findings.json files live (defaults to public://test-reports).')]
+  #[CLI\Option(name: 'base-url', description: 'Optional public URL to log when done.')]
   public function renderUnifiedReport(
     array $options = [
       'dest-uri' => 'public://test-reports',

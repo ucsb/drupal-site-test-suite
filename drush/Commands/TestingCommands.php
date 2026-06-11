@@ -4,6 +4,7 @@ namespace Drush\Commands;
 
 use Symfony\Component\Console\Output\NullOutput;
 use Symfony\Component\Console\Input\ArrayInput;
+use Drush\Attributes as CLI;
 use Drush\Drush;
 use Symfony\Component\Process\Process;
 use Drupal\Core\File\FileSystemInterface;
@@ -59,10 +60,8 @@ class TestingCommands extends DrushCommands {
 
   /**
    * Install JS deps for the tests workspace.
-   *
-   * @command utest:js-install
-   * @aliases utjsi
    */
+  #[CLI\Command(name: 'utest:js-install', aliases: ['utjsi'])]
   public function jsInstall() {
     $cmd = ['bash', '-lc', 'cd tests && npm i'];
     $this->runProcess($cmd, 1800, 'Installing JS dependencies (tests/)');
@@ -86,10 +85,8 @@ class TestingCommands extends DrushCommands {
 
   /**
    * Install Playwright browsers.
-   *
-   * @command utest:browsers
-   * @aliases utbr
    */
+  #[CLI\Command(name: 'utest:browsers', aliases: ['utbr'])]
   public function browsers() {
     $cmd = ['bash', '-lc', 'cd tests && npx playwright install --with-deps'];
     $this->runProcess($cmd, 1800, 'Installing Playwright browsers');
@@ -100,17 +97,11 @@ class TestingCommands extends DrushCommands {
    *
    * Validates a site's local environment before a test run. Each check
    * reports PASS / WARN / FAIL with one-line remediation when relevant.
-   *
-   * @command utest:check-config
-   * @aliases utchk
-   * @option base-url The base URL to validate reachability against.
-   *   Defaults to the BASE_URL env var if set.
-   * @usage drush utest:check-config
-   *   Run all checks against the BASE_URL env var (or skip URL checks
-   *   if BASE_URL is not set).
-   * @usage drush utest:check-config --base-url=https://my-site.ddev.site
-   *   Run all checks against an explicit URL.
    */
+  #[CLI\Command(name: 'utest:check-config', aliases: ['utchk'])]
+  #[CLI\Option(name: 'base-url', description: 'The base URL to validate reachability against. Defaults to the BASE_URL env var if set.')]
+  #[CLI\Usage(name: 'drush utest:check-config', description: 'Run all checks against the BASE_URL env var (or skip URL checks if BASE_URL is not set).')]
+  #[CLI\Usage(name: 'drush utest:check-config --base-url=https://my-site.ddev.site', description: 'Run all checks against an explicit URL.')]
   public function checkConfig(array $options = ['base-url' => NULL]) {
     $baseUrl = $options['base-url'] ?? getenv('BASE_URL') ?: NULL;
     $repoRoot = $this->getRepoRoot();
@@ -519,10 +510,8 @@ class TestingCommands extends DrushCommands {
 
   /**
    * Run Playwright + axe on key paths.
-   *
-   * @command utest:a11y:axe
-   * @aliases utaxe
    */
+  #[CLI\Command(name: 'utest:a11y:axe', aliases: ['utaxe'])]
   public function axe(
     array $options = [
       'base-url' => NULL,
@@ -577,10 +566,8 @@ class TestingCommands extends DrushCommands {
 
   /**
    * Run Playwright + axe with Developer Hub integration.
-   *
-   * @command utest:a11y:axe-watcher
-   * @aliases utaxew
    */
+  #[CLI\Command(name: 'utest:a11y:axe-watcher', aliases: ['utaxew'])]
   public function axeWatcher(
     array $options = [
       'base-url' => NULL,
@@ -659,10 +646,8 @@ class TestingCommands extends DrushCommands {
 
   /**
    * Run Playwright + axe Developer Hub full-site audit via sitemap.
-   *
-   * @command utest:a11y:axe-watcher-full
-   * @aliases utaxewf
    */
+  #[CLI\Command(name: 'utest:a11y:axe-watcher-full', aliases: ['utaxewf'])]
   public function axeWatcherFull(
     array $options = [
       'base-url' => NULL,
@@ -754,10 +739,8 @@ class TestingCommands extends DrushCommands {
 
   /**
    * Run Siteimprove Alfa checks.
-   *
-   * @command utest:a11y:alfa
-   * @aliases utalfa
    */
+  #[CLI\Command(name: 'utest:a11y:alfa', aliases: ['utalfa'])]
   public function alfa(
     array $options = [
       'base-url' => NULL,
@@ -821,10 +804,8 @@ class TestingCommands extends DrushCommands {
 
   /**
    * Run Siteimprove Alfa full-site audit via sitemap.
-   *
-   * @command utest:a11y:alfa-full
-   * @aliases utalfaf
    */
+  #[CLI\Command(name: 'utest:a11y:alfa-full', aliases: ['utalfaf'])]
   public function alfaFull(
     array $options = [
       'base-url' => NULL,
@@ -903,14 +884,11 @@ class TestingCommands extends DrushCommands {
    * Uses the open-source axe-core engine via @axe-core/playwright. No API
    * key required. Pair with `utest:a11y:axe-watcher-full` if you also want
    * the paid Deque Developer Hub dashboard.
-   *
-   * @command utest:a11y:axe-full
-   * @aliases utaxef
-   *
-   * @option base-url The site base URL. Falls back to BASE_URL env var, then http://127.0.0.1:8888.
-   * @option sitemap-url Optional explicit sitemap URL. Defaults to <base-url>/sitemap.xml.
-   * @option max-pages Cap on sitemap pages to audit; pass "all" or 0 for no cap. Default 50.
    */
+  #[CLI\Command(name: 'utest:a11y:axe-full', aliases: ['utaxef'])]
+  #[CLI\Option(name: 'base-url', description: 'The site base URL. Falls back to BASE_URL env var, then http://127.0.0.1:8888.')]
+  #[CLI\Option(name: 'sitemap-url', description: 'Optional explicit sitemap URL. Defaults to <base-url>/sitemap.xml.')]
+  #[CLI\Option(name: 'max-pages', description: 'Cap on sitemap pages to audit; pass "all" or 0 for no cap. Default 50.')]
   public function axeFull(
     array $options = [
       'base-url' => NULL,
@@ -988,14 +966,11 @@ class TestingCommands extends DrushCommands {
    * they don't render at the target viewport. This runner does, and emits
    * a normalized test-suite-findings.json the unified report aggregates
    * alongside the other a11y engines.
-   *
-   * @command utest:a11y:reflow
-   * @aliases utreflow
-   *
-   * @option base-url The site base URL. Falls back to the BASE_URL env var if unset, then to http://127.0.0.1:8888.
-   * @option sitemap-url Optional explicit sitemap URL. Defaults to <base-url>/sitemap.xml.
-   * @option max-pages Cap on sitemap pages to audit; pass "all" or 0 for no cap. Default 50.
    */
+  #[CLI\Command(name: 'utest:a11y:reflow', aliases: ['utreflow'])]
+  #[CLI\Option(name: 'base-url', description: 'The site base URL. Falls back to the BASE_URL env var if unset, then to http://127.0.0.1:8888.')]
+  #[CLI\Option(name: 'sitemap-url', description: 'Optional explicit sitemap URL. Defaults to <base-url>/sitemap.xml.')]
+  #[CLI\Option(name: 'max-pages', description: 'Cap on sitemap pages to audit; pass "all" or 0 for no cap. Default 50.')]
   public function reflow(
     array $options = [
       'base-url' => NULL,
@@ -1039,14 +1014,11 @@ class TestingCommands extends DrushCommands {
    * and flags zoom-blocking directives (`user-scalable=no`,
    * `maximum-scale<2`). Static a11y tools don't natively check this;
    * findings emit alongside the other a11y engines via the unified report.
-   *
-   * @command utest:a11y:meta-viewport
-   * @aliases utmetaviewport
-   *
-   * @option base-url The site base URL. Falls back to the BASE_URL env var if unset, then to http://127.0.0.1:8888.
-   * @option sitemap-url Optional explicit sitemap URL. Defaults to <base-url>/sitemap.xml.
-   * @option max-pages Cap on sitemap pages to audit; pass "all" or 0 for no cap. Default 50.
    */
+  #[CLI\Command(name: 'utest:a11y:meta-viewport', aliases: ['utmetaviewport'])]
+  #[CLI\Option(name: 'base-url', description: 'The site base URL. Falls back to the BASE_URL env var if unset, then to http://127.0.0.1:8888.')]
+  #[CLI\Option(name: 'sitemap-url', description: 'Optional explicit sitemap URL. Defaults to <base-url>/sitemap.xml.')]
+  #[CLI\Option(name: 'max-pages', description: 'Cap on sitemap pages to audit; pass "all" or 0 for no cap. Default 50.')]
   public function metaViewport(
     array $options = [
       'base-url' => NULL,
@@ -1142,11 +1114,9 @@ class TestingCommands extends DrushCommands {
 
   /**
    * Run pa11y-ci over the sitemap derived from --base-url.
-   *
-   * @command utest:a11y:pa11y
-   * @aliases utpa11y
-   * @option base-url The site base URL. Falls back to the BASE_URL env var if unset, then to http://127.0.0.1:8888.
    */
+  #[CLI\Command(name: 'utest:a11y:pa11y', aliases: ['utpa11y'])]
+  #[CLI\Option(name: 'base-url', description: 'The site base URL. Falls back to the BASE_URL env var if unset, then to http://127.0.0.1:8888.')]
   public function pa11y(
     array $options = [
       'base-url' => NULL,
@@ -1293,11 +1263,9 @@ class TestingCommands extends DrushCommands {
    * lane. Report-only: failing tests are flagged in the unified report but never
    * fail the build. Scoped to web/modules/custom + web/profiles/custom; core and
    * contrib tests are never run.
-   *
-   * @command utest:phpunit
-   * @aliases utphpunit
-   * @option base-url The site base URL. Falls back to the BASE_URL env var.
    */
+  #[CLI\Command(name: 'utest:phpunit', aliases: ['utphpunit'])]
+  #[CLI\Option(name: 'base-url', description: 'The site base URL. Falls back to the BASE_URL env var.')]
   public function phpunit(array $options = ['base-url' => NULL]) {
     $this->io()->section('Custom-module PHPUnit tests (Functional / Regression)');
 
@@ -1323,14 +1291,12 @@ class TestingCommands extends DrushCommands {
 
   /**
    * Run linting checks on custom modules, themes, and profiles.
-   *
-   * @command utest:lint
-   * @aliases utlint
-   * @option base-url The site base URL. Falls back to the BASE_URL env var if unset, then to http://127.0.0.1:8888.
-   * @option module Specific module name to lint (optional - lints all if not specified)
-   * @option theme Specific theme name to lint (optional - lints all if not specified)
-   * @option profiles Deprecated; profiles are now scanned by default. Kept as a no-op for backward compatibility.
    */
+  #[CLI\Command(name: 'utest:lint', aliases: ['utlint'])]
+  #[CLI\Option(name: 'base-url', description: 'The site base URL. Falls back to the BASE_URL env var if unset, then to http://127.0.0.1:8888.')]
+  #[CLI\Option(name: 'module', description: 'Specific module name to lint (optional - lints all if not specified)')]
+  #[CLI\Option(name: 'theme', description: 'Specific theme name to lint (optional - lints all if not specified)')]
+  #[CLI\Option(name: 'profiles', description: 'Deprecated; profiles are now scanned by default. Kept as a no-op for backward compatibility.')]
   public function lint(
     array $options = [
       'base-url' => NULL,
@@ -1389,10 +1355,8 @@ class TestingCommands extends DrushCommands {
 
   /**
    * Run all tests and (optionally) build the Drupal report index.
-   *
-   * @command utest:all
-   * @aliases utall
    */
+  #[CLI\Command(name: 'utest:all', aliases: ['utall'])]
   public function all(
     array $options = [
       'base-url'    => NULL,
