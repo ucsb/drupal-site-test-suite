@@ -5,6 +5,7 @@ namespace Drush\Commands;
 use Twig\Environment;
 use Drush\Attributes as CLI;
 use Drush\Boot\DrupalBootLevels;
+use Drupal\Core\File\FileExists;
 use Drupal\Core\File\FileSystemInterface;
 use Drupal\file\FileRepositoryInterface;
 use Drupal\Core\StreamWrapper\StreamWrapperManagerInterface;
@@ -151,7 +152,7 @@ class UTestReportCommands extends DrushCommands {
         try {
           $log = file_get_contents($pa11ySrc) ?: '';
           $html = "<!doctype html><meta charset=\"utf-8\"><title>pa11y log</title><pre>" . htmlspecialchars($log, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . "</pre>";
-          $repo->writeData($html, $runUri . '/pa11y.html', FileSystemInterface::EXISTS_REPLACE);
+          $repo->writeData($html, $runUri . '/pa11y.html', FileExists::Replace);
           $this->logger()->notice("pa11y HTML file created successfully");
         }
         catch (\Exception $e) {
@@ -204,7 +205,7 @@ class UTestReportCommands extends DrushCommands {
       ],
     ];
     $index = $this->renderIndex($twig, $vars);
-    $repo->writeData($index, $runUri . '/index.html', FileSystemInterface::EXISTS_REPLACE);
+    $repo->writeData($index, $runUri . '/index.html', FileExists::Replace);
 
     // The 'latest-alias' option is retained for backward compatibility but
     // defaults off — the canonical Test Report now lives at
@@ -736,7 +737,7 @@ TWIG;
     $html = str_replace('{{REPORT_DATA_JSON}}', $json, $template);
 
     $outputUri = rtrim($destBase, '/') . '/index.html';
-    $repo->writeData($html, $outputUri, FileSystemInterface::EXISTS_REPLACE);
+    $repo->writeData($html, $outputUri, FileExists::Replace);
 
     $count = count($aggregatedTests);
     $this->logger()->success(sprintf(

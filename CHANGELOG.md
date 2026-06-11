@@ -19,6 +19,9 @@ Workflow:
   (`#[CLI\Command]` etc.). No change to command names, aliases, options, or
   behavior; removes the Drush 12 deprecation and keeps the suite compatible
   with Drush 13.
+- Replaced the deprecated `FileSystemInterface::EXISTS_REPLACE` constant with
+  the `FileExists::Replace` enum in the report commands (deprecated in
+  Drupal 10.3, removed in Drupal 12). No behavior change.
 
 ## 1.0.0
 
