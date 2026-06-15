@@ -3,6 +3,9 @@
 namespace Drush\Commands;
 
 use Twig\Environment;
+use Drush\Attributes as CLI;
+use Drush\Boot\DrupalBootLevels;
+use Drupal\Core\File\FileExists;
 use Drupal\Core\File\FileSystemInterface;
 use Drupal\file\FileRepositoryInterface;
 use Drupal\Core\StreamWrapper\StreamWrapperManagerInterface;
@@ -13,10 +16,10 @@ use Drupal\Core\StreamWrapper\StreamWrapperManagerInterface;
 class UTestReportCommands extends DrushCommands {
 
   /**
-   * @command utest:report-index
-   * @aliases utidx
-   * @bootstrap full
+   * Collect artifacts and build the HTML report index.
    */
+  #[CLI\Command(name: 'utest:report-index', aliases: ['utidx'])]
+  #[CLI\Bootstrap(level: DrupalBootLevels::FULL)]
   public function buildIndex(
     array $options = [
       'dest-uri'       => 'public://test-reports',
@@ -149,7 +152,7 @@ class UTestReportCommands extends DrushCommands {
         try {
           $log = file_get_contents($pa11ySrc) ?: '';
           $html = "<!doctype html><meta charset=\"utf-8\"><title>pa11y log</title><pre>" . htmlspecialchars($log, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . "</pre>";
-          $repo->writeData($html, $runUri . '/pa11y.html', FileSystemInterface::EXISTS_REPLACE);
+          $repo->writeData($html, $runUri . '/pa11y.html', FileExists::Replace);
           $this->logger()->notice("pa11y HTML file created successfully");
         }
         catch (\Exception $e) {
@@ -202,7 +205,7 @@ class UTestReportCommands extends DrushCommands {
       ],
     ];
     $index = $this->renderIndex($twig, $vars);
-    $repo->writeData($index, $runUri . '/index.html', FileSystemInterface::EXISTS_REPLACE);
+    $repo->writeData($index, $runUri . '/index.html', FileExists::Replace);
 
     // The 'latest-alias' option is retained for backward compatibility but
     // defaults off — the canonical Test Report now lives at
@@ -599,15 +602,12 @@ TWIG;
 
   /**
    * Render the unified test-suite report from per-test test-suite-findings.json files.
-   *
-   * @command utest:report-render
-   * @aliases utrender
-   * @bootstrap full
-   *
-   * @option dest-uri Where the rendered index.html lands (defaults to public://test-reports — sits alongside the per-test lane dirs).
-   * @option src-uri  Where the per-test test-suite-findings.json files live (defaults to public://test-reports).
-   * @option base-url Optional public URL to log when done.
    */
+  #[CLI\Command(name: 'utest:report-render', aliases: ['utrender'])]
+  #[CLI\Bootstrap(level: DrupalBootLevels::FULL)]
+  #[CLI\Option(name: 'dest-uri', description: 'Where the rendered index.html lands (defaults to public://test-reports — sits alongside the per-test lane dirs).')]
+  #[CLI\Option(name: 'src-uri', description: 'Where the per-test test-suite-findings.json files live (defaults to public://test-reports).')]
+  #[CLI\Option(name: 'base-url', description: 'Optional public URL to log when done.')]
   public function renderUnifiedReport(
     array $options = [
       'dest-uri' => 'public://test-reports',
@@ -737,7 +737,7 @@ TWIG;
     $html = str_replace('{{REPORT_DATA_JSON}}', $json, $template);
 
     $outputUri = rtrim($destBase, '/') . '/index.html';
-    $repo->writeData($html, $outputUri, FileSystemInterface::EXISTS_REPLACE);
+    $repo->writeData($html, $outputUri, FileExists::Replace);
 
     $count = count($aggregatedTests);
     $this->logger()->success(sprintf(

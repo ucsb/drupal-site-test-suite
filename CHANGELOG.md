@@ -12,7 +12,29 @@ Workflow:
 
 ## Unreleased
 
-*No unreleased changes yet — see 1.0.0 below for the current release.*
+*Nothing yet. Changes accumulate here until the next release.*
+
+## 1.1.0
+
+### Added
+
+- **Drupal AI tooling examples:** copy-in Claude Code / GitHub Copilot **skills**,
+  **agents**, and **prompts** for auditing and remediating a site's custom code,
+  scaffolding modules/themes, writing PHPUnit tests, and managing config/secrets,
+  under `examples/drupal-ai/` with a README covering install (no external CLI
+  required) and usage. They pair with the `drush utest:*` suite: the suite
+  produces findings, the skills read, prioritize, and remediate them.
+
+### Changed
+
+- Converted the `drush utest:*` commandfiles from annotated-command docblocks
+  (`@command`, `@option`, `@usage`, `@bootstrap`) to PHP attributes
+  (`#[CLI\Command]` etc.). No change to command names, aliases, options, or
+  behavior; removes the Drush 12 deprecation and keeps the suite compatible
+  with Drush 13.
+- Replaced the deprecated `FileSystemInterface::EXISTS_REPLACE` constant with
+  the `FileExists::Replace` enum in the report commands (deprecated in
+  Drupal 10.3, removed in Drupal 12). No behavior change.
 
 ## 1.0.0
 
