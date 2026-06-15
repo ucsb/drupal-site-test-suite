@@ -12,6 +12,15 @@ Workflow:
 
 ## Unreleased
 
+### Added
+
+- **Drupal AI tooling examples:** copy-in Claude Code / GitHub Copilot **skills**,
+  **agents**, and **prompts** for auditing and remediating a site's custom code,
+  scaffolding modules/themes, writing PHPUnit tests, and managing config/secrets,
+  under `examples/drupal-ai/` with a README covering install (no external CLI
+  required) and usage. They pair with the `drush utest:*` suite: the suite
+  produces findings, the skills read, prioritize, and remediate them.
+
 ### Changed
 
 - Converted the `drush utest:*` commandfiles from annotated-command docblocks

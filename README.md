@@ -93,6 +93,22 @@ The one host-specific part is **provisioning the running site** that `BASE_URL` 
 
 To use one, copy it into your CI location (e.g. `.github/workflows/`), supply a reachable `BASE_URL`, and add any host secrets. See [`examples/ci/README.md`](examples/ci/README.md) for the shared pattern, the host-specific provisioning notes, and why you should run only one CI provider per repo.
 
+## Disclaimer
+
+We built this suite for our own Drupal work and are sharing it in case it's useful
+to others. It is provided **as-is, without warranty of any kind** and without any
+commitment to support, maintenance, or future updates. Use at your own risk under
+the terms of the [LICENSE](LICENSE).
+
+- **Run it only against sites you are authorized to test.** The suite scans, and
+  in some workflows can modify, the site you point it at.
+- **Automated checks are not complete.** A clean report covers only what the tools
+  check (for accessibility, roughly a third of WCAG, and public-facing pages only)
+  and does **not** certify a site as accessible, secure, or compliant.
+- **Review before you ship.** Treat results and any generated changes as a
+  starting point that needs human review, not a guarantee of correctness. Nothing
+  here is legal advice.
+
 ## Versioning & license
 
 - Releases follow [Semantic Versioning](https://semver.org); see [`CHANGELOG.md`](CHANGELOG.md).
