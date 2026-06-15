@@ -12,6 +12,10 @@ Workflow:
 
 ## Unreleased
 
+*Nothing yet. Changes accumulate here until the next release.*
+
+## 1.1.0
+
 ### Added
 
 - **Drupal AI tooling examples:** copy-in Claude Code / GitHub Copilot **skills**,
