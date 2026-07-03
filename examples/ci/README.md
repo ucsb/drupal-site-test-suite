@@ -1,7 +1,7 @@
 # CI examples
 
 CI is **optional**: a runner needs Node 20+, Playwright, and PHP 8.1+ (with
-Composer) to run the lanes — no Drush required in CI. These are starting points,
+Composer) to run the lanes; no Drush is required in CI. These are starting points,
 none wired to run in this repo.
 
 The suite's own steps are the same on every platform:
@@ -17,6 +17,19 @@ The suite's own steps are the same on every platform:
 
 `drush utest:*` is the LOCAL entry point (it needs a bootstrapped local Drupal);
 a CI runner testing a remote site has none, so it calls the packages directly.
+
+The lanes expect the docroot at `web/` in the checkout. If your project uses a
+different docroot (for example `docroot/`), commit a `web` symlink at the
+project root (`ln -s docroot web && git add web`) so CI checkouts see the
+expected layout.
+
+Every accessibility lane uses the same gate: **critical and serious findings
+fail the run; moderate and minor findings are advisory**. A lane that crawls 0
+pages or errors on pages is **INCOMPLETE**, not a pass. Derive each lane's
+result with `node accessibility/utils/lane-result.js <findingsDir>` (prints
+`passed` / `findings` / `failed` / `incomplete`) so incomplete runs fail the
+check instead of slipping through green. Lint and PHPUnit are report-only and
+never fail the check.
 
 ## Provisioning the site under test is host-specific
 

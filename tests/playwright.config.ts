@@ -1,8 +1,8 @@
 import { defineConfig, devices } from '@playwright/test';
 
 /**
- * Playwright configuration for Drupal site testing
- * Supports dynamic output directory configuration via environment variables
+ * Playwright configuration for accessibility and regression testing.
+ * Output directory and base URL are configurable via environment variables.
  */
 export default defineConfig({
   testDir: './accessibility',

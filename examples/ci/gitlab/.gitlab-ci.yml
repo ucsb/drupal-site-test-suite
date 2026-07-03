@@ -1,6 +1,13 @@
 # EXAMPLE — minimal, host-agnostic GitLab CI pipeline for the test suite.
 # Not wired to run in this repo. Copy to your project root as .gitlab-ci.yml.
 #
+# It runs the same lanes as the full Pantheon reference
+# (examples/ci/github-pantheon/): gitleaks secrets scanning, lint, PHPUnit,
+# and the six accessibility lanes (Alfa, axe-core, optional axe Developer Hub,
+# pa11y, reflow, meta-viewport), with the same gate: critical/serious a11y
+# findings or an INCOMPLETE lane fail the job; lint and PHPUnit are
+# report-only.
+#
 # It assumes BASE_URL already points at a REACHABLE running Drupal site.
 # PROVISIONING THAT SITE IS HOST-SPECIFIC AND OUT OF SCOPE HERE (Pantheon,
 # Acquia, a CI-built local site, or an existing staging URL). Add your deploy
@@ -13,10 +20,30 @@
 # CI tests a REMOTE/deployed site, so the lanes are called directly (node
 # orchestrator + Playwright specs + the PHPUnit runner) — not via `drush
 # utest:*`, which is the LOCAL entry point and needs a bootstrapped local Drupal.
+
+# Committed-secret scan (gitleaks).
+secrets-scan:
+  image:
+    name: ghcr.io/gitleaks/gitleaks:latest
+    entrypoint: [""]
+  variables:
+    GIT_DEPTH: 0
+  script:
+    - |
+      CONFIG_FLAG=""
+      if [ -f tests/code-quality/security/.gitleaks.toml ]; then
+        CONFIG_FLAG="--config=tests/code-quality/security/.gitleaks.toml"
+      fi
+      gitleaks detect ${CONFIG_FLAG} --source=. --redact --exit-code=1 --verbose
+
 test-suite:
   image: php:8.3-cli
   variables:
     BASE_URL: "https://your-reachable-site.example"
+    # AXE_API_KEY: set as a masked CI/CD variable to enable the optional
+    # axe Developer Hub lane; it is skipped when unset.
+    A11Y_PROFILE: comprehensive
+    A11Y_SEVERITY_LEVELS: critical,serious
   before_script:
     - apt-get update && apt-get install -y git unzip curl
     - curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer
@@ -29,18 +56,86 @@ test-suite:
     - cd tests
     - npm ci
     - npx playwright install --with-deps
-    # Code quality (lint orchestrator; uses ../vendor/bin/* and tests/node_modules).
-    - node code-quality/lint-orchestrator.js
-    # Accessibility against $BASE_URL (full-site lanes).
-    - npx playwright test accessibility/alfa/alfa-full-site.spec.js
-    - npx playwright test accessibility/axe/axe-full-site.spec.ts --config=playwright.config.ts
-    - npx playwright test accessibility/reflow/reflow.spec.js
-    - npx playwright test accessibility/meta-viewport/meta-viewport.spec.js
-    # Functional / regression (custom-module PHPUnit) — from the project root.
+    # Code quality (report-only: findings never fail the job).
+    - node code-quality/lint-orchestrator.js || echo "lint findings are report-only - read the lint report"
+    # Functional / regression (custom-module PHPUnit). Report-only.
     - cd ..
-    - node tests/phpunit/run.js tests/reports/phpunit
-    # pa11y and the unified-report render are omitted here (they need extra config
-    # / Drush); see ../github-pantheon/ for the complete flow.
+    - node tests/phpunit/run.js tests/reports/phpunit || echo "PHPUnit is report-only - read the PHPUnit report"
+    # Accessibility lanes against $BASE_URL; shared gate at the end.
+    - cd tests
+    - export SITEMAP_URL="${BASE_URL}/sitemap.xml"
+    # Siteimprove Alfa (full sitemap).
+    - ALFA_OUTPUT_DIR="$(pwd)/reports/alfa-full"; export ALFA_OUTPUT_DIR
+    - npx playwright test accessibility/alfa/alfa-full-site.spec.js --reporter=list || echo "Alfa spec exited non-zero - gate derived from findings below"
+    # axe-core (full sitemap).
+    - AXE_OUTPUT_DIR="$(pwd)/reports/axe-full"; export AXE_OUTPUT_DIR
+    - npx playwright test accessibility/axe/axe-full-site.spec.ts --config=playwright.config.ts --reporter=list || echo "axe spec exited non-zero - gate derived from findings below"
+    # axe Developer Hub (optional commercial lane; skipped without a key).
+    - |
+      if [ -n "${AXE_API_KEY:-}" ]; then
+        PLAYWRIGHT_REPORT_DIR="$(pwd)/reports/playwright-axe-watcher-full"
+        export PLAYWRIGHT_REPORT_DIR
+        npx playwright test accessibility/axe/axe-watcher-full-site.spec.ts --config=playwright.config.ts --reporter=list || \
+          echo "axe Developer Hub spec exited non-zero (results live on the Deque dashboard)"
+      else
+        echo "AXE_API_KEY not set - skipping the optional axe Developer Hub lane"
+      fi
+    # Reflow at 320px (WCAG 2.1 SC 1.4.10).
+    - REFLOW_OUTPUT_DIR="$(pwd)/reports/reflow"; export REFLOW_OUTPUT_DIR
+    - npx playwright test accessibility/reflow/reflow.spec.js --reporter=list || echo "Reflow spec exited non-zero - gate derived from findings below"
+    # Meta-viewport zoom-blocking check (WCAG 2.0 SC 1.4.4).
+    - META_VIEWPORT_OUTPUT_DIR="$(pwd)/reports/meta-viewport"; export META_VIEWPORT_OUTPUT_DIR
+    - npx playwright test accessibility/meta-viewport/meta-viewport.spec.js --reporter=list || echo "Meta-viewport spec exited non-zero - gate derived from findings below"
+    # pa11y (config generated at runtime; Chrome flags required on CI runners).
+    - |
+      mkdir -p reports/pa11y
+      cat > .pa11yci.json <<'PA11YCFG'
+      {
+        "defaults": {
+          "standard": "WCAG2AA",
+          "includeWarnings": true,
+          "timeout": 90000,
+          "userAgent": "pa11y-ci accessibility testing",
+          "chromeLaunchConfig": {
+            "args": ["--ignore-certificate-errors", "--no-sandbox", "--disable-dev-shm-usage"]
+          }
+        },
+        "concurrency": 4
+      }
+      PA11YCFG
+      if node --input-type=module -e "
+        import { fetchSitemapUrls } from './accessibility/utils/sitemap.js';
+        import { readFileSync, writeFileSync } from 'fs';
+        const urls = await fetchSitemapUrls(process.env.SITEMAP_URL, {
+          baseUrl: process.env.BASE_URL,
+          maxPages: 0,
+        });
+        const cfg = JSON.parse(readFileSync('.pa11yci.json', 'utf8'));
+        cfg.urls = urls;
+        writeFileSync('.pa11yci.json', JSON.stringify(cfg, null, 2));
+        console.log('pa11y will test ' + urls.length + ' page(s)');
+      "; then
+        npx pa11y-ci --json > reports/pa11y/pa11y-report.json 2> reports/pa11y/pa11y.log || \
+          echo "pa11y-ci exited non-zero - gate derived from findings below"
+        if [ -s reports/pa11y/pa11y-report.json ]; then
+          node accessibility/pa11y/emit-findings.js "$(pwd)/reports/pa11y" --html || \
+            echo "pa11y findings emission failed (raw JSON report still available)"
+        fi
+      else
+        echo "Could not resolve sitemap URLs for pa11y - lane reports incomplete"
+      fi
+    # Gate: critical/serious findings or an INCOMPLETE lane fail the job.
+    - |
+      STATUS=0
+      for lane in alfa-full axe-full pa11y reflow meta-viewport; do
+        RESULT=$(node accessibility/utils/lane-result.js "$(pwd)/reports/${lane}")
+        echo "lane ${lane}: ${RESULT}"
+        case "${RESULT}" in
+          failed|incomplete) STATUS=1 ;;
+        esac
+      done
+      exit "${STATUS}"
+    # Unified-report render omitted (Drush/local only); see examples/ci/github-pantheon/.
   artifacts:
     when: always
     paths:

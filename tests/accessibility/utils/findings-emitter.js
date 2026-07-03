@@ -1,5 +1,5 @@
 /**
- * findings-emitter — converts a single test's tool-native results into the
+ * findings-emitter - converts a single test's tool-native results into the
  * unified test-suite-findings.json contract (tests/reports/_shell/findings.schema.json).
  *
  * Each test (alfa, axe, pa11y, lint, etc.) writes its own test-suite-findings.json
@@ -12,6 +12,19 @@ import { readFileSync, writeFileSync } from "fs";
 import { join, resolve, dirname } from "path";
 import { fileURLToPath } from "url";
 import { execSync } from "child_process";
+import { renderFindingsReport } from "./findings-report.js";
+
+/**
+ * Write a payload's test-suite-findings.json plus a shared-style HTML report
+ * (<test>-report.html) next to it, and return the JSON path. Lanes without a
+ * bespoke report (reflow, meta-viewport, axe-full) use this.
+ */
+function writePayloadWithReport(payload, outputDir) {
+  const target = join(outputDir, "test-suite-findings.json");
+  writeFileSync(target, JSON.stringify(payload, null, 2));
+  writeFileSync(join(outputDir, `${payload.test}-report.html`), renderFindingsReport(payload));
+  return target;
+}
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -68,7 +81,7 @@ export function getHeadlineOverride(testName, ruleId) {
  *
  * The earlier "local-upstream" vs "local-site" split was a URL-pattern
  * heuristic that misclassified .ddev.site/.lndo.site/staging hosts. The
- * useful signal is the deploy target (multidev) plus whether we're in CI —
+ * useful signal is the deploy target (multidev) plus whether we're in CI -
  * base_url carries the rest.
  */
 export function buildSurface() {
@@ -120,7 +133,7 @@ function detectGitBranch() {
  * Compute summary rollups (totals_by_severity, totals_by_impact) from a
  * findings array. The shell expects these so it doesn't have to re-aggregate.
  */
-export function computeSummary(findings, { pages_tested, files_scanned } = {}) {
+export function computeSummary(findings, { pages_tested, files_scanned, pages_errored } = {}) {
   const totals_by_severity = { critical: 0, serious: 0, moderate: 0, minor: 0 };
   const totals_by_impact   = {
     "screen-reader": 0, "keyboard": 0, "low-vision": 0,
@@ -131,18 +144,27 @@ export function computeSummary(findings, { pages_tested, files_scanned } = {}) {
     const ic = f.impact_category || "uncategorized";
     if (totals_by_impact[ic] !== undefined) totals_by_impact[ic]++;
   }
+  // A page-crawling lane that tested 0 pages verified nothing, so it is not a
+  // pass; report it as incomplete rather than a false green. Same when pages
+  // errored mid-run (navigation failure, timeout, 5xx): those pages were not
+  // verified, so the run cannot claim a clean pass.
+  const errored = typeof pages_errored === "number" ? pages_errored : 0;
+  const status = (pages_tested === 0 || errored > 0)
+    ? "incomplete"
+    : (findings.length === 0 ? "pass" : "findings-found");
   const summary = {
     totals_by_severity, totals_by_impact,
-    status: findings.length === 0 ? "pass" : "findings-found"
+    status,
   };
   if (typeof pages_tested === "number") summary.pages_tested = pages_tested;
+  if (errored > 0) summary.pages_errored = errored;
   if (typeof files_scanned === "number") summary.files_scanned = files_scanned;
   return summary;
 }
 
 /**
- * Convert an Alfa full-site/key-pages report (the shape produced by
- * alfa-full-site.spec.js / alfa-accessibility.spec.js) into a test-suite-findings.json
+ * Convert an Alfa full-site report (the shape produced by
+ * alfa-full-site.spec.js) into a test-suite-findings.json
  * payload and write it to disk.
  *
  * @param {object}  alfaReport   The existing { summary, results, ...} report.
@@ -174,18 +196,14 @@ export function writeAlfaFindings(alfaReport, profileInfo, alfaConfig, outputDir
   // Group issues across all pages by rule_id. Each issue carries a ruleInfo
   // object plus a `failed` count for that page; we accumulate locations.
   // The full-site spec stores pages under `results`; the key-pages spec uses
-  // `pages` — accept either.
+  // `pages` - accept either.
   const byRule = new Map();
   const pageResults = alfaReport.results || alfaReport.pages || [];
   for (const page of pageResults) {
     if (!page.issues || page.issues.length === 0) continue;
     for (const issue of page.issues) {
-      // Only emit findings for issues that match the configured severity
-      // levels — otherwise a "fail-on-critical" CI run would still publish
-      // moderate/minor findings the user told the test to ignore.
-      const configuredSeverities = new Set(alfaConfig.severity || ["critical", "serious"]);
-      if (!configuredSeverities.has(issue.severity)) continue;
-
+      // Report all severities. The pass/fail gate lives in the spec and stays on
+      // the configured severities, so moderate/minor are visible but non-blocking.
       const ruleId = issue.ruleInfo?.id || extractRuleIdFromUrl(issue.rule);
       if (!ruleId) continue;
 
@@ -194,11 +212,26 @@ export function writeAlfaFindings(alfaReport, profileInfo, alfaConfig, outputDir
         entry = { ruleId, ruleUrl: issue.rule, ruleInfo: issue.ruleInfo, locations: [] };
         byRule.set(ruleId, entry);
       }
-      entry.locations.push({
-        kind: "page",
-        path: page.path,
-        occurrences: issue.failed || 1
-      });
+      // Prefer per-element locations (selector + failing markup) when the spec
+      // captured them; otherwise fall back to a single page-level location.
+      const targets = Array.isArray(issue.targets) ? issue.targets : [];
+      if (targets.length) {
+        for (const t of targets) {
+          entry.locations.push({
+            kind: "page",
+            path: page.path,
+            selector: t.selector || "",
+            html: t.html || "",
+            occurrences: 1,
+          });
+        }
+      } else {
+        entry.locations.push({
+          kind: "page",
+          path: page.path,
+          occurrences: issue.failed || 1,
+        });
+      }
     }
   }
 
@@ -240,18 +273,23 @@ export function writeAlfaFindings(alfaReport, profileInfo, alfaConfig, outputDir
       tags: alfaConfig?.tags || [],
       severity_levels: alfaConfig?.severity || ["critical", "serious"]
     },
+    gate: {
+      fails_build: true,
+      severities: process.env.A11Y_SEVERITY_LEVELS
+        ? process.env.A11Y_SEVERITY_LEVELS.split(",").map((s) => s.trim()).filter(Boolean)
+        : ["critical", "serious"],
+    },
     generated_at: new Date().toISOString(),
     duration_ms: typeof alfaReport.summary?.duration === "number"
       ? alfaReport.summary.duration : undefined,
     summary: computeSummary(findings, {
-      pages_tested: alfaReport.summary?.totalPages ?? pageResults.length
+      pages_tested: alfaReport.summary?.totalPages ?? pageResults.length,
+      pages_errored: pageResults.filter((p) => p.error).length
     }),
     findings
   };
 
-  const target = join(outputDir, "test-suite-findings.json");
-  writeFileSync(target, JSON.stringify(payload, null, 2));
-  return target;
+  return writePayloadWithReport(payload, outputDir);
 }
 
 /**
@@ -260,7 +298,7 @@ export function writeAlfaFindings(alfaReport, profileInfo, alfaConfig, outputDir
  * + selector where the rule fired becomes a location.
  *
  * @param {Array}   pageResults  Per-page results in the shape produced by
- *                               a11y.spec.ts (`{ path, url, details: [{ id, description, impact, helpUrl, nodes: [{ target, html }] }] }`).
+ *                               axe-full-site.spec.ts (`{ path, url, details: [{ id, description, impact, helpUrl, nodes: [{ target, html }] }] }`).
  * @param {object}  axeConfig    `{ tags, severity }` from a11y-profiles.
  * @param {object}  profileInfo  `{ name, description, profile }`.
  * @param {string}  outputDir    Where to write test-suite-findings.json.
@@ -294,6 +332,7 @@ export function writeAxeFindings(pageResults, axeConfig, profileInfo, outputDir,
           kind: "page",
           path: page.path || page.url || "",
           selector: typeof n.target === "string" ? n.target : (Array.isArray(n.target) ? n.target.join(" > ") : ""),
+          html: typeof n.html === "string" ? n.html : "",
           occurrences: 1
         });
       }
@@ -336,21 +375,21 @@ export function writeAxeFindings(pageResults, axeConfig, profileInfo, outputDir,
       tags: axeConfig?.tags || [],
       severity_levels: axeConfig?.severity || ["critical", "serious"]
     },
+    gate: { fails_build: true, severities: ["critical", "serious"] },
     generated_at: new Date().toISOString(),
     summary: computeSummary(findings, {
-      pages_tested: pageResults?.length
+      pages_tested: pageResults?.length,
+      pages_errored: (pageResults || []).filter((p) => p.error).length
     }),
     findings
   };
 
-  const target = join(outputDir, "test-suite-findings.json");
-  writeFileSync(target, JSON.stringify(payload, null, 2));
-  return target;
+  return writePayloadWithReport(payload, outputDir);
 }
 
 function mapAxeImpact(impact) {
   // axe's impact taxonomy already matches the unified schema's severity
-  // tiers — pass through, defaulting to "moderate" when unset.
+  // tiers - pass through, defaulting to "moderate" when unset.
   if (impact === "critical" || impact === "serious"
     || impact === "moderate" || impact === "minor") return impact;
   return "moderate";
@@ -383,11 +422,12 @@ export function writePa11yFindings(pa11yReport, outputDir) {
         byRule.set(ruleId, entry);
       }
       // pa11y returns a relative URL fragment via `context` and a CSS
-      // selector — surface both. `path` holds the page URL.
+      // selector - surface both. `path` holds the page URL.
       entry.locations.push({
         kind: "page",
         path: pageUrlToPath(url),
         selector: issue.selector || "",
+        html: typeof issue.context === "string" ? issue.context : "",
         line: issue.context ? extractLineFromContext(issue.context) : undefined,
         occurrences: 1
       });
@@ -424,6 +464,9 @@ export function writePa11yFindings(pa11yReport, outputDir) {
     test,
     tool: "pa11y-ci",
     surface: buildSurface(),
+    // Same gate policy as Alfa: pa11y errors normalize to serious and fail
+    // the build; warnings/notices (moderate/minor) are advisory.
+    gate: { fails_build: true, severities: ["critical", "serious"] },
     generated_at: new Date().toISOString(),
     summary: computeSummary(findings, { pages_tested: pagesTested }),
     findings
@@ -509,7 +552,7 @@ export function writeLintFindings(inputs, meta, outputDir) {
   });
 
   // Include every tool that ran in this pass, even when it produced zero
-  // findings — the report banner reflects which tools were exercised, not
+  // findings - the report banner reflects which tools were exercised, not
   // which happened to find issues this run.
   const tools = [];
   if (Array.isArray(inputs?.phpcs)) tools.push("phpcs");
@@ -524,6 +567,11 @@ export function writeLintFindings(inputs, meta, outputDir) {
   if (Array.isArray(inputs?.markdownlint)) tools.push("markdownlint");
   if (Array.isArray(inputs?.actionlint)) tools.push("actionlint");
 
+  // Lanes that threw (e.g. PHPStan, composer) so downstream consumers can tell
+  // a crashed lane from a clean one instead of reading an empty array as a pass.
+  const laneErrors = (meta?.lane_errors && Object.keys(meta.lane_errors).length)
+    ? meta.lane_errors
+    : undefined;
   const payload = {
     schema_version: "1.0",
     test,
@@ -531,6 +579,7 @@ export function writeLintFindings(inputs, meta, outputDir) {
     surface: buildSurface(),
     generated_at: new Date().toISOString(),
     duration_ms: typeof meta?.duration_ms === "number" ? meta.duration_ms : undefined,
+    lane_errors: laneErrors,
     summary: computeSummary(findings, {
       files_scanned: typeof meta?.files_scanned === "number" ? meta.files_scanned : undefined
     }),
@@ -651,7 +700,7 @@ function groupDeprecationFindings(test, deprecationFindings) {
       rule_id,
       severity: override.severity || severity || "moderate",
       impact_category: override.impact_category || "code-quality",
-      headline: override.headline || "Deprecated API usage — update before the next Drupal major",
+      headline: override.headline || "Deprecated API usage: update before the next Drupal major",
       description: message || "",
       fix_hint: override.fix_hint || "Replace the deprecated symbol per its @deprecated change-record note.",
       wcag_criteria: [],
@@ -812,7 +861,7 @@ function mapEslintSeverity(raw) {
 function groupCspellFindings(test, cspellFindings) {
   // One finding per unique misspelled word; locations are each occurrence.
   // Word is kept verbatim (case-sensitive) so two casings of the same
-  // misspelling don't collapse into one entry — typically different bugs.
+  // misspelling don't collapse into one entry - typically different bugs.
   const byWord = new Map();
   for (const f of cspellFindings) {
     const word = f.word || "";
@@ -869,7 +918,7 @@ function groupCspellFindings(test, cspellFindings) {
 function groupComposerFindings(test, composerFindings) {
   // Group by rule_id; each occurrence is one location entry. composer
   // findings are project-scoped so locations only carry `path`
-  // (composer.json or composer.lock) — no line numbers.
+  // (composer.json or composer.lock) - no line numbers.
   const byRule = new Map();
   for (const f of composerFindings) {
     const ruleId = f.rule_id || "composer:unknown";
@@ -921,7 +970,7 @@ function groupComposerFindings(test, composerFindings) {
 function groupMarkdownlintFindings(test, mdFindings) {
   // Group by markdownlint rule_id (MD###). Each occurrence is one
   // location entry. Headlines fall back to the rule message when no
-  // override is curated — markdownlint's native messages are clear
+  // override is curated - markdownlint's native messages are clear
   // enough for most rules.
   const byRule = new Map();
   for (const f of mdFindings) {
@@ -998,8 +1047,8 @@ function groupActionlintFindings(test, alFindings) {
     const override = getHeadlineOverride(test, `actionlint:${ruleSuffix}`);
     const headline = override.headline
       || (kind === "shellcheck"
-        ? `shellcheck: ${ruleSuffix.replace(/^shellcheck:/, "")} — ${message.replace(/^shellcheck reported issue in this script: /, "").slice(0, 80)}`
-        : `actionlint: ${kind} — ${message.slice(0, 80)}`);
+        ? `shellcheck: ${ruleSuffix.replace(/^shellcheck:/, "")} · ${message.replace(/^shellcheck reported issue in this script: /, "").slice(0, 80)}`
+        : `actionlint: ${kind} · ${message.slice(0, 80)}`);
     out.push({
       id: `lint:actionlint:${ruleSuffix}`,
       rule_id: ruleSuffix,
@@ -1083,19 +1132,21 @@ export function writeReflowFindings(pageResults, viewport, outputDir) {
     surface: buildSurface(),
     profile: {
       key: "reflow",
-      name: `WCAG 2.1 SC 1.4.10 — Reflow at ${viewport.width}px`,
+      name: `WCAG 2.1 SC 1.4.10: Reflow at ${viewport.width}px`,
       tags: ["wcag21aa"],
       severity_levels: ["serious"],
     },
+    gate: { fails_build: true, severities: ["critical", "serious"] },
     generated_at: new Date().toISOString(),
     duration_ms: 0,
-    summary: computeSummary(findings, { pages_tested: pageResults.length }),
+    summary: computeSummary(findings, {
+      pages_tested: pageResults.length,
+      pages_errored: pageResults.filter((r) => r.error).length
+    }),
     findings,
   };
 
-  const target = join(outputDir, "test-suite-findings.json");
-  writeFileSync(target, JSON.stringify(payload, null, 2));
-  return target;
+  return writePayloadWithReport(payload, outputDir);
 }
 
 /**
@@ -1149,19 +1200,21 @@ export function writeMetaViewportFindings(pageResults, outputDir) {
     surface: buildSurface(),
     profile: {
       key: "meta-viewport",
-      name: "WCAG 2.0 SC 1.4.4 — Resize Text (meta-viewport)",
+      name: "WCAG 2.0 SC 1.4.4: Resize Text (meta-viewport)",
       tags: ["wcag2aa"],
       severity_levels: ["serious"],
     },
+    gate: { fails_build: true, severities: ["critical", "serious"] },
     generated_at: new Date().toISOString(),
     duration_ms: 0,
-    summary: computeSummary(findings, { pages_tested: pageResults.length }),
+    summary: computeSummary(findings, {
+      pages_tested: pageResults.length,
+      pages_errored: pageResults.filter((r) => r.failure_reason === "audit-error" || r.error).length
+    }),
     findings,
   };
 
-  const target = join(outputDir, "test-suite-findings.json");
-  writeFileSync(target, JSON.stringify(payload, null, 2));
-  return target;
+  return writePayloadWithReport(payload, outputDir);
 }
 
 // ─── PHPUnit (Functional / Regression) ───────────────────────────────────────
@@ -1231,13 +1284,12 @@ export function writePhpunitFindings(junitXml, meta, outputDir) {
     test: "phpunit",
     tool: "phpunit",
     surface: buildSurface(),
+    gate: { fails_build: false },
     generated_at: new Date().toISOString(),
     duration_ms: typeof meta?.duration_ms === "number" ? meta.duration_ms : undefined,
     summary: computeSummary(findings, { files_scanned: parsed.total }),
     findings,
   };
 
-  const target = join(outputDir, "test-suite-findings.json");
-  writeFileSync(target, JSON.stringify(payload, null, 2));
-  return target;
+  return writePayloadWithReport(payload, outputDir);
 }

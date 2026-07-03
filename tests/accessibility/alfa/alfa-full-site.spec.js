@@ -6,7 +6,6 @@ import { join, resolve, dirname } from "path";
 import { fileURLToPath } from "url";
 import { getRuleInfo, getSeverityColor, getCategoryIcon } from "./dynamic-rule-extractor.js";
 import { getAccessibilityConfig, getProfileInfo } from "../config/a11y-profiles.js";
-import { escapeHtml, generateHtmlReport } from "../utils/report-generator.js";
 import { fetchSitemapUrls } from "../utils/sitemap.js";
 import { writeAlfaFindings } from "../utils/findings-emitter.js";
 
@@ -22,6 +21,13 @@ const OUTPUT_DIR = process.env.ALFA_OUTPUT_DIR || join(PROJECT_ROOT, "web/sites/
 
 // Get Alfa-specific configuration
 const alfaConfig = getAccessibilityConfig('alfa');
+
+// Severities that FAIL the run. Reporting is decoupled (every severity is
+// reported); only these gate the build. Default critical/serious; override
+// via A11Y_SEVERITY_LEVELS.
+const GATE_SEVERITIES = process.env.A11Y_SEVERITY_LEVELS
+  ? process.env.A11Y_SEVERITY_LEVELS.split(',').map(s => s.trim()).filter(Boolean)
+  : ['critical', 'serious'];
 
 console.log(`DEBUG: Environment variables:`);
 console.log(`   BASE_URL: ${BASE}`);
@@ -119,11 +125,33 @@ test.describe("Siteimprove Alfa - Full Site Audit", () => {
           ...alfaConfig.options
         });
 
-        // Process results with severity filtering
+        // resultAggregates is an Alfa Map; .filter receives the stats values, so
+        // a.failed works (spreading would yield [key, value] pairs and break it).
+        // Counts come from allIssues (a plain array) below; the Map has no .length.
         const allFailures = results.resultAggregates.filter(a => a.failed > 0);
-        
-        // Get configured severity levels for filtering
-        const configuredSeverities = new Set(alfaConfig.severity || ['critical', 'serious']);
+
+        // Best-effort: capture the failing element(s) per rule from the
+        // per-element outcomes, so the report shows where on the page each
+        // issue is (like the Siteimprove cloud app). Wrapped defensively - an
+        // Alfa API change just falls back to page-level locations.
+        const targetsByRule = new Map();
+        try {
+          const { Outcome } = await import("@siteimprove/alfa-act");
+          for (const [ruleKey, outcomes] of results.outcomes) {
+            const list = [];
+            for (const oc of outcomes) {
+              if (!Outcome.isFailed(oc) || !oc.target) continue;
+              const html = typeof oc.target.toString === "function"
+                ? String(oc.target.toString()).trim().slice(0, 500) : "";
+              const selector = typeof oc.target.path === "function" ? oc.target.path() : "";
+              if (html || selector) list.push({ selector, html });
+            }
+            if (list.length) targetsByRule.set(ruleKey, list);
+          }
+        } catch (_e) { /* element capture is best-effort */ }
+
+        // Gate severities (fail-on). Reporting is decoupled and covers all.
+        const configuredSeverities = new Set(GATE_SEVERITIES);
         console.log(`   Filtering by severity levels: ${Array.from(configuredSeverities).join(', ')}`);
         
         // Filter failures by severity and collect all issues for reporting
@@ -142,7 +170,8 @@ test.describe("Siteimprove Alfa - Full Site Audit", () => {
             passed: stats.passed,
             cantTell: stats.cantTell,
             severity: ruleInfo.severity,
-            ruleInfo: ruleInfo
+            ruleInfo: ruleInfo,
+            targets: targetsByRule.get(ruleUrl) || []
           };
           
           // Add to all issues for comprehensive reporting
@@ -160,25 +189,25 @@ test.describe("Siteimprove Alfa - Full Site Audit", () => {
         
         // Determine pass/fail based on FILTERED failures only
         pageResult.passed = filteredFailures.length === 0;
-        pageResult.issueCount = allFailures.length; // Total issues for reporting
+        pageResult.issueCount = allIssues.length; // Total issues for reporting
         pageResult.filteredIssueCount = filteredFailures.length; // Issues that cause failure
 
         // Update summary based on filtered results
         if (pageResult.passed) {
           testSummary.passedPages++;
-          if (allFailures.length > 0) {
-            console.log(`   ✅ PASS - ${allFailures.length} total issue(s) found, but none match severity filter (${Array.from(configuredSeverities).join(', ')})`);
+          if (allIssues.length > 0) {
+            console.log(`   ✅ PASS - ${allIssues.length} total issue(s) found, but none match severity filter (${Array.from(configuredSeverities).join(', ')})`);
           } else {
             console.log(`   ✅ PASS - No accessibility issues found`);
           }
         } else {
           testSummary.failedPages++;
           testSummary.totalIssues += filteredFailures.length;
-          console.log(`   ❌ FAIL - ${filteredFailures.length} filtered issue(s) found (${allFailures.length} total issues)`);
+          console.log(`   ❌ FAIL - ${filteredFailures.length} filtered issue(s) found (${allIssues.length} total issues)`);
         }
 
         // Log detailed results for this page
-        if (allFailures.length > 0) {
+        if (allIssues.length > 0) {
           console.log(`   Issues (showing all, filtering by ${Array.from(configuredSeverities).join(', ')}):`);
           for (const failure of allFailures) {
             // Extract rule URL from the failure array structure
@@ -228,24 +257,14 @@ test.describe("Siteimprove Alfa - Full Site Audit", () => {
       console.log(`❌ DEBUG: Error writing JSON report: ${error.message}`);
     }
 
-    // Write HTML report
-    const htmlReport = await generateHtmlReport(report, profileInfo);
-    const htmlReportPath = join(OUTPUT_DIR, "alfa-full-site-report.html");
-    console.log(`DEBUG: Attempting to write HTML report to: ${htmlReportPath}`);
-    try {
-      writeFileSync(htmlReportPath, htmlReport);
-      console.log(`✅ DEBUG: HTML report written successfully`);
-    } catch (error) {
-      console.log(`❌ DEBUG: Error writing HTML report: ${error.message}`);
-    }
-
-    // Emit test-suite-findings.json — the unified-shape contract that the unified
-    // report shell consumes. Sits alongside the existing JSON/HTML reports.
+    // Emit test-suite-findings.json (the unified-shape contract) plus the
+    // shared-style alfa-full-report.html - both written by writeAlfaFindings.
+    const htmlReportPath = join(OUTPUT_DIR, "alfa-full-report.html");
     try {
       const findingsPath = writeAlfaFindings(report, profileInfo, alfaConfig, OUTPUT_DIR, "alfa-full");
-      console.log(`✅ DEBUG: test-suite-findings.json written: ${findingsPath}`);
+      console.log(`✅ findings + HTML report written: ${findingsPath}`);
     } catch (error) {
-      console.log(`❌ DEBUG: Error writing test-suite-findings.json: ${error.message}`);
+      console.log(`❌ Error writing findings/HTML report: ${error.message}`);
     }
 
     console.log(`\nAlfa Full Site Audit Complete:`);
@@ -257,13 +276,22 @@ test.describe("Siteimprove Alfa - Full Site Audit", () => {
     
     // Assert overall test result - fail only if pages had issues matching configured severity levels
     const filteredFailures = allResults.filter(result => !result.passed && !result.error);
-    const configuredSeverities = alfaConfig.severity || ['critical', 'serious'];
-    
+    const erroredPages = allResults.filter(result => result.error);
+    const configuredSeverities = GATE_SEVERITIES;
+
     console.log(`\nFinal Test Result:`);
     console.log(`   Configured severity levels: ${configuredSeverities.join(', ')}`);
     console.log(`   Pages that failed severity filter: ${filteredFailures.length}`);
+    console.log(`   Pages that errored (not audited): ${erroredPages.length}`);
     console.log(`   Total pages with any issues: ${allResults.filter(r => r.issueCount > 0).length}`);
-    
+
+    // Errored pages were never audited, so the run is incomplete. Without this
+    // gate an outage that errors every page would count zero failures and pass.
+    expect(
+      erroredPages.length,
+      `${erroredPages.length} page(s) could not be audited (navigation error or timeout): ${erroredPages.slice(0, 5).map(r => r.path).join(', ')}. Run is incomplete, not a pass.`
+    ).toBe(0);
+
     expect(
       filteredFailures.length,
       `${filteredFailures.length} page(s) failed accessibility checks with severity levels: ${configuredSeverities.join(', ')}. See detailed report for specifics.`

@@ -1,6 +1,6 @@
 {
   "name": "drupal-test-suite",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "license": "GPL-2.0-or-later",
   "type": "module",
   "devDependencies": {
@@ -15,7 +15,9 @@
     "cspell": "^8.16.0",
     "editorconfig-checker": "^5.1.1",
     "eslint": "^8.57.0",
+    "fast-glob": "^3.3.3",
     "htmlhint": "^1.9.1",
+    "js-yaml": "^4.1.0",
     "markdownlint-cli2": "^0.14.0",
     "pa11y-ci": "^4.0.1",
     "stylelint": "^16.2.1",
@@ -24,26 +26,7 @@
     "typescript": "^5.0.0"
   },
   "scripts": {
-    "test:a11y:axe": "npx playwright test accessibility/axe/a11y.spec.ts",
-    "test:a11y:axe-watcher": "npx playwright test accessibility/axe/a11y-watcher.spec.ts",
-    "test:a11y:axe-watcher-full": "npx playwright test accessibility/axe/axe-watcher-full-site.spec.ts",
-    "test:axe:full-site": "npx playwright test accessibility/axe/axe-watcher-full-site.spec.ts",
-    "test:a11y:alfa": "npx playwright test accessibility/alfa/alfa-accessibility.spec.js",
-    "test:a11y:alfa-full": "npx playwright test accessibility/alfa/alfa-full-site.spec.js",
-    "test:alfa:full-site": "npx playwright test accessibility/alfa/alfa-full-site.spec.js",
-    "test:a11y:pa11y": "npx pa11y-ci",
     "install:browsers": "npx playwright install --with-deps",
-    "lint:php": "cd .. && vendor/bin/phpcs --standard=tests/code-quality/static-analysis/phpcs.xml.dist",
-    "lint:phpstan": "cd .. && vendor/bin/phpstan analyse -c tests/code-quality/static-analysis/phpstan.neon --no-progress",
-    "lint:js": "cd .. && tests/node_modules/.bin/eslint --no-eslintrc --config tests/code-quality/linting/.eslintrc.json --ignore-path tests/code-quality/linting/.eslintignore --no-error-on-unmatched-pattern \"web/modules/custom/**/*.js\" \"web/themes/**/*.js\" \"web/profiles/custom/**/*.js\"",
-    "lint:cspell": "cd .. && tests/node_modules/.bin/cspell --config tests/code-quality/spelling/.cspell.json --no-progress --no-must-find-files \"web/modules/custom/**/*.{php,module,inc,install,info.yml,md,twig}\" \"web/themes/**/*.{twig,scss,md}\" \"web/profiles/custom/**/*.{php,profile,info.yml,md}\" \"drush/Commands/**/*.php\" \"tests/**/*.md\" \"README.md\"",
-    "lint:yaml": "npx yaml-lint",
-    "lint:twig": "vendor/bin/twigcs web/themes web/modules/custom --config tests/code-quality/linting/.twigcs.yml",
-    "lint:style": "npx stylelint \"web/themes/**/*.scss\" \"web/themes/**/*.css\" --config tests/code-quality/linting/.stylelintrc.json",
-    "lint:actions": "cd .. && actionlint",
-    "lint:markdown": "cd .. && tests/node_modules/.bin/markdownlint-cli2 --config tests/code-quality/linting/.markdownlint.json \"README.md\" \"docs/**/*.md\" \"web/modules/custom/**/*.md\" \"web/themes/**/*.md\" \"web/profiles/custom/**/*.md\" \"tests/**/*.md\" \"drush/**/*.md\" \".github/**/*.md\" \"!**/node_modules/**\" \"!**/vendor/**\" \"!**/contrib/**\" \"!**/bin/**\" \"!web/core/**\"",
-    "lint:editorconfig": "npx editorconfig-checker web/modules/custom web/themes web/profiles/custom",
-    "lint:upstream": "node code-quality/lint-orchestrator.js",
-    "lint:all": "npm run lint:upstream"
+    "lint:upstream": "node code-quality/lint-orchestrator.js"
   }
 }
