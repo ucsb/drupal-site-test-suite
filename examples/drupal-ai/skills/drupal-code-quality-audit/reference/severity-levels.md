@@ -1,12 +1,12 @@
 # Severity Levels & Impact Taxonomy
 
-The single source of truth for the `severity` and `impact_category` fields in `finding-format.md`. Every agent reasons about priority using only this scale. If you find yourself reading an engine's *native* severity downstream of an adapter, something leaked — fix the adapter.
+The single source of truth for the `severity` and `impact_category` fields in `finding-format.md`. Every agent reasons about priority using only this scale. If you find yourself reading an engine's *native* severity downstream of an adapter, something leaked; fix the adapter.
 
 This taxonomy is fixed by the project's emitted contract (`tests/reports/_shell/findings.schema.json`). Match it exactly; don't add levels.
 
 ## The normalized severity scale
 
-**Four levels**, ordered most-to-least urgent (the upstream schema enumerates exactly these — there is no `info`):
+**Four levels**, ordered most-to-least urgent (the upstream schema enumerates exactly these; there is no `info`):
 
 | Severity | Meaning | Merge gating |
 | --- | --- | --- |
@@ -15,7 +15,7 @@ This taxonomy is fixed by the project's emitted contract (`tests/reports/_shell/
 | `moderate` | Genuine issue, lower impact. Most style/consistency violations, WCAG AAA, best-practice rules. | Does not block. |
 | `minor` | Cosmetic or pedantic. Whitespace, formatting, ordering, spelling. | Does not block. |
 
-**Merge-gating rule (both suites): block only on `critical` + `serious`.** Matches the project's CI policy — the comprehensive profile is *run*, but gating is restricted so AAA/best-practice noise doesn't wall the team off from merging.
+**Merge-gating rule (both suites): block only on `critical` + `serious`.** Matches the project's CI policy, the comprehensive profile is *run*, but gating is restricted so AAA/best-practice noise doesn't wall the team off from merging.
 
 **No `info` level.** Where an engine emits an advisory/"can't tell"/"notice" signal (Alfa `cantTell`, pa11y `notice`), normalize to **`minor`** and add a `tags` entry (`needs-review`, `inconclusive`) so triage can still surface it. Severity stays coarse; tags carry nuance.
 
@@ -31,7 +31,7 @@ This taxonomy is fixed by the project's emitted contract (`tests/reports/_shell/
 
 ## Severity is not fixability
 
-Keep these orthogonal — conflating them is the classic mistake:
+Keep these orthogonal; conflating them is the classic mistake:
 
 - **Severity** = how much it matters → drives prioritization and gating.
 - **`fix.autofixable` / `fix.confidence`** = whether a machine can safely fix it → drives automation.
@@ -40,7 +40,7 @@ A `minor` whitespace issue is trivially autofixable. A `critical` PHPStan type e
 
 ## When do you map severity yourself?
 
-- **Reading a `test-suite-findings.json` (drush/json/html adapters):** **trust the emitted `severity`** — the project's emitters already normalized it. Do *not* re-map. You may apply the conformance floor below as a safety check, taking `max(emitted, floor)`.
+- **Reading a `test-suite-findings.json` (drush/json/html adapters):** **trust the emitted `severity`**: the project's emitters already normalized it. Do *not* re-map. You may apply the conformance floor below as a safety check, taking `max(emitted, floor)`.
 - **Running a tool directly (folder adapter / no test suite):** there's no emitter, so you map native output using the tables below.
 
 ### Per-engine mapping (direct-run only)
@@ -70,7 +70,7 @@ A `minor` whitespace issue is trivially autofixable. A `critical` PHPStan type e
 | **deprecations** | removed-in-next-major API | `serious` |
 | **gitleaks** | any secret detected | `critical` |
 
-**Accessibility suite** (map by whichever is more severe — engine adjective or WCAG level)
+**Accessibility suite** (map by whichever is more severe; engine adjective or WCAG level)
 
 | Engine | Native signal | → Normalized |
 | --- | --- | --- |

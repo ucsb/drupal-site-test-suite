@@ -1,8 +1,8 @@
-# Development — maintaining drupal-phpunit-tests
+# Development: maintaining drupal-phpunit-tests
 
 ## Keep it vendor-neutral
 
-Works for any Drupal 10/11 site. Examples use neutral names (`my_module`, `MyService`, `Classifier`) — no real module names, sites, or CI identifiers.
+Works for any Drupal 10/11 site. Examples use neutral names (`my_module`, `MyService`, `Classifier`); no real module names, sites, or CI identifiers.
 
 ## Keep it current with Drupal
 
@@ -13,7 +13,7 @@ Works for any Drupal 10/11 site. Examples use neutral names (`my_module`, `MySer
 - **Update-path tests** (`hook_update_N` via `UpdatePathTestBase`) → `drupal-hook-update-n`.
 - **New module + its `tests/` skeleton** → `drupal-module-scaffold`.
 - **Coding/doc standards** (Doxygen, DI, translatable strings) → `drupal-coding-standards`.
-- **Running tests / QA** → the test suite (`/tests/phpunit/run.js`, `drush utest:phpunit`) and `drupal-code-quality-audit`. This skill only *writes* tests.
+- **Running tests / QA** → the test suite (`/tests/phpunit/run.js`, `drush utest:phpunit`) and `drupal-code-quality-audit`. This skill writes tests and does only a *scoped* verify of the files it just wrote (SKILL.md "Verify what you wrote"); full-codebase QA stays with those.
 
 ## Structure
 

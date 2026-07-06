@@ -14,13 +14,13 @@ drush en key
 Add a key at **Administration › Configuration › System › Keys** (`/admin/config/system/keys`), or ship it as config in `config/install/key.key.<key_id>.yml`:
 
 - **Key type:** `authentication` (a token/API key), `authentication_multivalue` (e.g. user+pass), or `encryption`.
-- **Key provider:** where the value is read from — `config` (dev only — value stored in config, *not* for production secrets), `env` (environment variable), `file` (a file outside the docroot), or a host-specific provider (e.g. Pantheon Secrets). See `information/providers.md`.
+- **Key provider:** where the value is read from: `config` (dev only; value stored in config, *not* for production secrets), `env` (environment variable), `file` (a file outside the docroot), or a host-specific provider (e.g. Pantheon Secrets). See `information/providers.md`.
 
-Shipping the *key definition* (not the value) as config is fine — the value comes from the provider at runtime.
+Shipping the *key definition* (not the value) as config is fine, the value comes from the provider at runtime.
 
 ## 3. Read the key in code (via DI)
 
-Inject `key.repository` and read the value where you need it — never hard-code, never `getenv()` directly in a class:
+Inject `key.repository` and read the value where you need it; never hard-code, never `getenv()` directly in a class:
 
 ```php
 <?php
@@ -61,6 +61,6 @@ services:
 
 ## Notes
 
-- Handle a **missing** key gracefully (provider not configured on this environment) — return `NULL`/throw a clear error, don't fatal.
+- Handle a **missing** key gracefully (provider not configured on this environment); return `NULL`/throw a clear error, don't fatal.
 - Don't cache the secret value in config/state; read it from the repository when needed.
-- For tests, inject a mocked `KeyRepositoryInterface` (see `drupal-phpunit-tests`) — never put a real secret in a fixture.
+- For tests, inject a mocked `KeyRepositoryInterface` (see `drupal-phpunit-tests`); never put a real secret in a fixture.

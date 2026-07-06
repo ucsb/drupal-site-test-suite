@@ -1,6 +1,6 @@
 # Writing Unit and Kernel Tests
 
-Neutral names (`my_module`, `MyService`) — substitute your real ones. Doc-block every class/method; use data providers for input variations.
+Neutral names (`my_module`, `MyService`); substitute your real ones. Doc-block every class/method; use data providers for input variations.
 
 ## Unit test (no bootstrap, no DB)
 
@@ -101,11 +101,11 @@ class SettingsDefaultsTest extends KernelTestBase {
 
 Common Kernel setup helpers:
 
-- `installEntitySchema('<entity_type>')` — before creating that entity type.
-- `installConfig(['<module>'])` — to load a module's default config.
-- `installSchema('<module>', ['<table>'])` — legacy/custom DB tables.
+- `installEntitySchema('<entity_type>')`: before creating that entity type.
+- `installConfig(['<module>'])`: to load a module's default config.
+- `installSchema('<module>', ['<table>'])`: legacy/custom DB tables.
 - Create entities via the entity type manager and assert on saved/loaded state.
 
 ## Choosing the level
 
-If a method is pure (inputs → output, no Drupal services) → **Unit**. The moment it needs the container, config, an entity, or the DB → **Kernel**. Reserve Functional (`BrowserTestBase`) for full-page/HTTP/JS behavior — heavier and slower; only when Kernel can't reach it.
+If a method is pure (inputs → output, no Drupal services) → **Unit**. The moment it needs the container, config, an entity, or the DB → **Kernel**. Reserve Functional (`BrowserTestBase`) for full-page/HTTP/JS behavior; heavier and slower; only when Kernel can't reach it.

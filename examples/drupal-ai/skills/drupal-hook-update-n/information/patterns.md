@@ -1,6 +1,6 @@
 # Update Hook Patterns
 
-All examples use neutral names (`my_module`, `old_module`/`new_module`, `oldtheme`/`newtheme`) — substitute your real machine names. Every hook returns a translatable message and is idempotent.
+All examples use neutral names (`my_module`, `old_module`/`new_module`, `oldtheme`/`newtheme`); substitute your real machine names. Every hook returns a translatable message and is idempotent.
 
 ## Anatomy
 
@@ -15,7 +15,7 @@ function my_module_update_10015(&$sandbox) {
     return t('Theme rename already applied.');
   }
 
-  // 2. Do the work — small, targeted, reversible where possible.
+  // 2. Do the work: small, targeted, reversible where possible.
   $config_factory->getEditable('system.theme')->set('default', 'newtheme')->save();
 
   // 3. Migrate block placements from old theme to new.
@@ -29,9 +29,9 @@ function my_module_update_10015(&$sandbox) {
 }
 ```
 
-Throw `\Drupal\Core\Utility\UpdateException` on an unrecoverable error — the batch stops and subsequent updates don't run.
+Throw `\Drupal\Core\Utility\UpdateException` on an unrecoverable error, the batch stops and subsequent updates don't run.
 
-## Pattern 1 — Rewrite a config object without clobbering customization
+## Pattern 1: Rewrite a config object without clobbering customization
 
 ```php
 function my_module_update_10001() {
@@ -46,7 +46,7 @@ function my_module_update_10001() {
 
 Prefer this surgical `getEditable()` + `set()` over a blanket config rewrite for small changes.
 
-## Pattern 2 — Rename a module (pair with composer `replace`)
+## Pattern 2: Rename a module (pair with composer `replace`)
 
 ```php
 function new_module_update_11001() {
@@ -78,7 +78,7 @@ function new_module_update_11001() {
 
 Pair with a `composer.json` `replace` entry in the upstream so sites referencing the old package name still resolve during the transition.
 
-## Pattern 3 — Entity bundle / field storage changes
+## Pattern 3: Entity bundle / field storage changes
 
 ```php
 function my_module_update_10002() {
@@ -92,10 +92,10 @@ function my_module_update_10002() {
 }
 ```
 
-- Add a field: `installFieldStorageDefinition(...)`. Remove one: `uninstallFieldStorageDefinition(...)` — count existing values first and warn before deleting.
-- Changing a field **type** corrupts data — use `hook_post_update_NAME` + a proper migration instead.
+- Add a field: `installFieldStorageDefinition(...)`. Remove one: `uninstallFieldStorageDefinition(...)`: count existing values first and warn before deleting.
+- Changing a field **type** corrupts data; use `hook_post_update_NAME` + a proper migration instead.
 
-## Pattern 4 — Grant a new permission to existing roles
+## Pattern 4: Grant a new permission to existing roles
 
 ```php
 function my_module_update_10003() {
@@ -112,7 +112,7 @@ function my_module_update_10003() {
 
 For dynamic source roles, detect the role by a stable property rather than hard-coding the id.
 
-## Pattern 5 — Batched update (touches many entities)
+## Pattern 5: Batched update (touches many entities)
 
 ```php
 function my_module_update_10004(&$sandbox) {

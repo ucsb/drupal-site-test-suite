@@ -14,7 +14,7 @@ drush en pantheon_secrets
 terminus secret:site:set <site>.<env> my_api "<the-secret-value>"
 ```
 
-Then define a Key (`/admin/config/system/keys`) whose **provider is Pantheon Secrets**, mapped to the `my_api` secret. Code reads it through `key.repository` as usual. The value never enters the repo — it lives in Pantheon's store and is injected at runtime.
+Then define a Key (`/admin/config/system/keys`) whose **provider is Pantheon Secrets**, mapped to the `my_api` secret. Code reads it through `key.repository` as usual. The value never enters the repo; it lives in Pantheon's store and is injected at runtime.
 
 ## Environment variables
 
@@ -37,22 +37,22 @@ A secret stored in a file **outside the docroot** (so it's never web-served) and
 - **Container/CI or non-Pantheon host →** environment variables.
 - **No secret store available →** file-based, outside the docroot, git-ignored.
 
-Never use the Key module's **`config`** provider for real secrets — it stores the value in config, which is exportable and often committed. It's for development placeholders only.
+Never use the Key module's **`config`** provider for real secrets; it stores the value in config, which is exportable and often committed. It's for development placeholders only.
 
 ## CI/CD pipeline secrets (separate from Drupal-runtime secrets)
 
-The providers above are read by the **running Drupal site**. **Pipeline secrets** are different — they're consumed by **CI/CD** (build, test, deploy) and stored in the **CI platform's secret store**, never in the repo and never in the Drupal Key module.
+The providers above are read by the **running Drupal site**. **Pipeline secrets** are different; they're consumed by **CI/CD** (build, test, deploy) and stored in the **CI platform's secret store**, never in the repo and never in the Drupal Key module.
 
 For **GitHub Actions**, store them under the repo's **Settings → Secrets and variables → Actions**, and reference them in a workflow as `${{ secrets.NAME }}` (injected as an env var into the step that needs it). Common ones for a Drupal/Pantheon pipeline:
 
-- **`PANTHEON_MACHINE_TOKEN`** — authenticate Terminus with Pantheon (e.g. to create multidev environments). From Pantheon Dashboard → Account → Machine Tokens.
-- **`PANTHEON_SSH_KEY`** — SSH private key for git operations against Pantheon. Generate a dedicated key:
+- **`PANTHEON_MACHINE_TOKEN`**: authenticate Terminus with Pantheon (e.g. to create multidev environments). From Pantheon Dashboard → Account → Machine Tokens.
+- **`PANTHEON_SSH_KEY`**: SSH private key for git operations against Pantheon. Generate a dedicated key:
 
   ```bash
   ssh-keygen -t rsa -b 4096 -m PEM -C "pantheon-github-actions" -f ~/.ssh/pantheon_github_actions
   ```
 
   Add the **public** key to Pantheon (Account → SSH Keys); put the **private** key content in the GitHub secret.
-- **`AXE_API_KEY`** — axe Developer Hub token for enhanced a11y testing. **Optional:** if it's unset, invalid, or the hub is unreachable, the Developer Hub tests skip cleanly (the free axe-core full-site scan still runs), so the pipeline stays green; the PR comment notes the skip.
+- **`AXE_API_KEY`**: axe Developer Hub token for enhanced a11y testing. **Optional:** if it's unset, invalid, or the hub is unreachable, the Developer Hub tests skip cleanly (the free axe-core full-site scan still runs), so the pipeline stays green; the PR comment notes the skip.
 
-Rules: reference a CI secret only via `${{ secrets.NAME }}` and inject it as an env var into the step that needs it — never echo it into logs, never write it into the checkout. Rotate any that leak.
+Rules: reference a CI secret only via `${{ secrets.NAME }}` and inject it as an env var into the step that needs it; never echo it into logs, never write it into the checkout. Rotate any that leak.

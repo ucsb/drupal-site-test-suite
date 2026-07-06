@@ -49,7 +49,7 @@ regions:
 #   - css/ckeditor5.css
 ```
 
-No `version:` line — Composer/Drush set it from the release tag.
+No `version:` line; Composer/Drush set it from the release tag.
 
 ## `<theme_name>.libraries.yml`
 
@@ -134,9 +134,9 @@ function <theme_name>_theme_suggestions_page_alter(array &$suggestions, array $v
 }
 ```
 
-Theme preprocess functions are procedural (theme layer) — `\Drupal::` static calls are acceptable here, as in modules' `.module` hooks.
+Theme preprocess functions are procedural (theme layer); `\Drupal::` static calls are acceptable here, as in modules' `.module` hooks.
 
-## `theme-settings.php` (+ config) — only if the theme has settings
+## `theme-settings.php` (+ config): only if the theme has settings
 
 ```php
 <?php
@@ -180,7 +180,7 @@ Ship defaults in `config/install/<theme_name>.settings.yml` and a typed `config/
 
 ```css
 :root {
-  /* Design tokens — reference these instead of hard-coded values so contrast
+  /* Design tokens: reference these instead of hard-coded values so contrast
      and forced-colors hold. */
   --color-text: #1b1b1b;
   --color-link: #0061a8;
@@ -199,10 +199,10 @@ a {
 
 ## Twig override (`templates/…`)
 
-Place overrides under `templates/` (organize by type — `layout/`, `content/`, `navigation/`). Keep strings translatable:
+Place overrides under `templates/` (organize by type; `layout/`, `content/`, `navigation/`). Keep strings translatable:
 
 ```twig
-{# templates/layout/page.html.twig — minimal example #}
+{# templates/layout/page.html.twig: minimal example #}
 <div class="page">
   <header class="page__header">{{ page.header }}</header>
   <main class="page__content">

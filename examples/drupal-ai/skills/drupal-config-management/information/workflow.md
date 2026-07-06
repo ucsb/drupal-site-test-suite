@@ -17,7 +17,7 @@ It holds the site's full active configuration as `*.yml` (`core.extension.yml`, 
 ```bash
 drush config:export            # write active DB config → config/sync
 git add config/sync
-git diff --staged              # REVIEW — config diffs are easy to over-commit
+git diff --staged              # REVIEW: config diffs are easy to over-commit
 git commit -m "Export config: <what changed>"
 ```
 
@@ -30,7 +30,7 @@ drush config:status            # ALWAYS check drift first
 drush config:import            # apply config/sync → active DB config
 ```
 
-`config:import` is transactional — it applies the full sync set. If active config has drifted (someone changed it in prod), import overwrites it unless that config is protected by `config_ignore`.
+`config:import` is transactional; it applies the full sync set. If active config has drifted (someone changed it in prod), import overwrites it unless that config is protected by `config_ignore`.
 
 ## Single / partial operations
 

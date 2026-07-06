@@ -28,9 +28,9 @@ web/themes/custom/<theme_name>/
 
 ## Regions
 
-- Declared in `.info.yml` under `regions:`. The `content` region is **required** — Drupal errors without it.
+- Declared in `.info.yml` under `regions:`. The `content` region is **required**: Drupal errors without it.
 - Only declared regions can receive blocks. Keep the set lean and meaningful; every region should have a place in `page.html.twig` (`{{ page.<region> }}`) or it's invisible.
-- If you omit `regions:` entirely, Drupal applies a default set — but declaring them explicitly is clearer and matches your `page.html.twig`.
+- If you omit `regions:` entirely, Drupal applies a default set; but declaring them explicitly is clearer and matches your `page.html.twig`.
 
 ## Attaching assets (never inline)
 
@@ -41,7 +41,7 @@ web/themes/custom/<theme_name>/
 
 ## CSS organization
 
-Follow the SMACSS-style buckets that map to the `.libraries.yml` weights — `base` (elements, tokens), `layout` (regions, grids), `component` (reusable UI), `state`, `theme`. Namespace component classes (BEM-ish: `block__element--modifier`); never style by `#id`; reference design tokens / CSS custom properties (see `drupal-coding-standards`).
+Follow the SMACSS-style buckets that map to the `.libraries.yml` weights; `base` (elements, tokens), `layout` (regions, grids), `component` (reusable UI), `state`, `theme`. Namespace component classes (BEM-ish: `block__element--modifier`); never style by `#id`; reference design tokens / CSS custom properties (see `drupal-coding-standards`).
 
 ## Single-Directory Components (SDC, Drupal 10.3+)
 
@@ -55,7 +55,7 @@ components/card/
 └── card.js
 ```
 
-Render with `{{ include('<theme_name>:card', { title: node.label }) }}`. SDC bundles the markup, styles, and behavior, validates props against the schema, and auto-attaches its assets — the modern, encapsulated way to build theme UI.
+Render with `{{ include('<theme_name>:card', { title: node.label }) }}`. SDC bundles the markup, styles, and behavior, validates props against the schema, and auto-attaches its assets, the modern, encapsulated way to build theme UI.
 
 ## Base theme vs Starterkit
 

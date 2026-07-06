@@ -1,12 +1,12 @@
-# Development — maintaining drupal-config-management
+# Development: maintaining drupal-config-management
 
 ## Detect-first is load-bearing
 
-Not every site uses config management — many keep config in the database only. **Always reinforce the detection gate** (`config_sync_directory` set + populated/committed `config/sync` + `drush config:status` works + split/ignore present) before applying the workflow. If config management isn't in use, say so and offer to help set it up rather than assuming the workflow exists.
+Not every site uses config management; many keep config in the database only. **Always reinforce the detection gate** (`config_sync_directory` set + populated/committed `config/sync` + `drush config:status` works + split/ignore present) before applying the workflow. If config management isn't in use, say so and offer to help set it up rather than assuming the workflow exists.
 
 ## Keep it vendor-neutral
 
-Works for any Drupal 10/11 site. No site/host/environment names baked in — generic "dev/test/prod," generic config object names.
+Works for any Drupal 10/11 site. No site/host/environment names baked in; generic "dev/test/prod," generic config object names.
 
 ## Keep it current with Drupal
 
