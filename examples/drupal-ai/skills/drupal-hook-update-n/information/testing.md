@@ -1,6 +1,6 @@
 # Update-Path Test Fixture
 
-Every non-trivial update hook ships with a test proving the update path works from a realistic pre-update fixture — and that it's idempotent.
+Every non-trivial update hook ships with a test proving the update path works from a realistic pre-update fixture; and that it's idempotent.
 
 ## Layout (in the module being updated)
 
@@ -50,7 +50,7 @@ class MyModuleUpdateTest extends UpdatePathTestBase {
     $this->runUpdates();
     $this->assertSame('newtheme', $this->config('system.theme')->get('default'));
 
-    // Re-run to confirm idempotency — running again must not error or regress.
+    // Re-run to confirm idempotency; running again must not error or regress.
     $this->runUpdates();
     $this->assertSame('newtheme', $this->config('system.theme')->get('default'));
   }
@@ -66,9 +66,9 @@ drush sql:dump --gzip --result-file=my_module-update-10015.sql
 # Rename to .php.gz per the UpdatePathTestBase convention.
 ```
 
-Commit the fixture so CI can run the test. Prefer a **minimal** DB (the module's schema + a few representative entities) over a full production dump — smaller, faster, and no sensitive data committed.
+Commit the fixture so CI can run the test. Prefer a **minimal** DB (the module's schema + a few representative entities) over a full production dump; smaller, faster, and no sensitive data committed.
 
 ## Notes
 
 - The test namespace is `Drupal\Tests\<module>\Functional\Update` (it's a Functional/update-path test, not Unit/Kernel). For Unit/Kernel test conventions, see `drupal-phpunit-tests`.
-- Assert **before** state, run updates, assert **after**, then run a second time and assert again — that second run is the idempotency proof.
+- Assert **before** state, run updates, assert **after**, then run a second time and assert again; that second run is the idempotency proof.

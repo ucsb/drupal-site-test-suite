@@ -60,6 +60,22 @@
       "minimum": 0,
       "description": "Wall time the test took, in milliseconds."
     },
+    "gate": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "What fails the build. Report-only lanes set fails_build:false.",
+      "properties": {
+        "fails_build": {
+          "type": "boolean",
+          "description": "Whether findings from this lane fail the build."
+        },
+        "severities": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Severities that fail the build when fails_build is true."
+        }
+      }
+    },
     "summary": {
       "type": "object",
       "required": ["totals_by_severity"],
@@ -95,6 +111,11 @@
           "minimum": 0,
           "description": "How many pages this test evaluated (a11y tests only)."
         },
+        "pages_errored": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "How many pages could not be audited (navigation error or timeout). Present only when nonzero; forces status to 'incomplete'."
+        },
         "files_scanned": {
           "type": "integer",
           "minimum": 0,
@@ -102,8 +123,8 @@
         },
         "status": {
           "type": "string",
-          "enum": ["pass", "fail", "findings-found", "skipped", "error"],
-          "description": "Overall test outcome. 'fail' = blocking failures; 'findings-found' = non-blocking findings exist; 'pass' = clean; 'skipped' = test not run; 'error' = tool itself crashed."
+          "enum": ["pass", "fail", "findings-found", "skipped", "incomplete", "error"],
+          "description": "Overall test outcome. 'fail' = blocking failures; 'findings-found' = non-blocking findings exist; 'pass' = clean; 'skipped' = test not run; 'incomplete' = did not verify everything it targeted (0 pages crawled, or some pages errored); 'error' = tool itself crashed."
         }
       }
     },

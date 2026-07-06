@@ -14,26 +14,38 @@ on:
     branches: [ main, master ]
     types: [ opened, synchronize, reopened ]
 
+# Least privilege for GITHUB_TOKEN: checkout reads the repo, github-script
+# posts the PR results comment and lists run artifacts for report links,
+# and push-to-pantheon / bobheadxi-deployments create and finish the
+# pr-<N> deployment records.
+permissions:
+  contents: read
+  pull-requests: write
+  deployments: write
+  actions: read
+
 env:
-  # Run the broadest WCAG/best-practice ruleset; the unified report exposes
-  # filter chips so contributors can narrow to A/AA, ARIA, etc. as needed.
-  # Merge gating still uses A11Y_SEVERITY_LEVELS below — AAA / best-practice
-  # findings surface in the report without blocking PRs.
+  # Broadest WCAG/best-practice ruleset; the report's filter chips narrow it.
+  # Merge gating uses A11Y_SEVERITY_LEVELS below, so findings don't block PRs.
   A11Y_PROFILE: comprehensive
   # Test both critical and serious violations
   A11Y_SEVERITY_LEVELS: critical,serious
   # axe Developer Hub project ID for dashboard links (set per-project)
   AXE_PROJECT_ID: "00000000-0000-0000-0000-000000000000"  # your axe DevHub project id (optional)
 
+# Cancel a superseded run for the same PR: avoids two runs racing on the same
+# pr-<N> multidev, and saves Actions minutes.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  # Per-PR secrets scan. Runs once per PR (not per theme) since the surface
-  # is the git history, not a deployed site. Strict-blocking — a flagged
-  # secret means the commit must be rewritten and the secret rotated, which
-  # is cheaper than letting the credential leak through merge. Allowlist
-  # legitimate test fixtures via tests/code-quality/security/.gitleaks.toml.
+  # Per-PR secrets scan over the git history (once per PR). Blocking: a hit
+  # must be rotated and the commit rewritten. Allowlist fixtures in .gitleaks.toml.
   secrets-scanning:
     name: Secrets scanning (gitleaks)
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - name: Checkout code with full history
         uses: actions/checkout@v6
@@ -81,7 +93,7 @@ jobs:
             echo "✅ No secrets detected in PR diff"
           else
             COUNT=$(jq 'length' gitleaks-report.json 2>/dev/null || echo "?")
-            echo "❌ gitleaks flagged ${COUNT} potential secret(s) — see report artifact below"
+            echo "❌ gitleaks flagged ${COUNT} potential secret(s) - see report artifact below"
             echo ""
             echo "Resolution steps:"
             echo "  1. Rotate the leaked credential immediately (assume it is compromised)"
@@ -91,19 +103,20 @@ jobs:
             exit "$GITLEAKS_EXIT"
           fi
 
+      # The report is safe to upload because the scan runs with --redact:
+      # matched secret values are masked, only locations are reported. Short
+      # retention since it is only needed while the finding is triaged.
       - name: Upload gitleaks report
         if: always() && hashFiles('gitleaks-report.json') != ''
         uses: actions/upload-artifact@v6
         with:
           name: gitleaks-report
           path: gitleaks-report.json
-          retention-days: 30
+          retention-days: 7
 
-  # Repo-wide lint pass. Runs once per PR (no matrix) and covers every
-  # custom module + theme + profile in the checkout — same surface as
-  # `drush utest:lint` locally. The accessibility job downloads this job's
-  # artifact and SFTPs it to the multidev so the lint report is browsable
-  # alongside the accessibility report.
+  # Repo-wide lint pass (once per PR), same surface as `drush utest:lint`.
+  # The accessibility job downloads this artifact and SFTPs it to the
+  # multidev so the lint report is browsable alongside the a11y report.
   lint:
     name: Code linting
     needs: secrets-scanning
@@ -111,6 +124,7 @@ jobs:
     # release with no time to run the suite). Secrets-scanning still runs.
     if: ${{ !contains(github.event.pull_request.labels.*.name, 'skip-tests') }}
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     outputs:
       result: ${{ steps.lint.outputs.lint_result }}
       errors: ${{ steps.lint.outputs.lint_errors }}
@@ -148,7 +162,7 @@ jobs:
               echo "❌ composer install failed after 3 attempts"
               exit 1
             fi
-            echo "⚠️ composer install failed on attempt ${attempt} — retrying in 30s..."
+            echo "⚠️ composer install failed on attempt ${attempt} - retrying in 30s..."
             sleep 30
           done
 
@@ -177,15 +191,14 @@ jobs:
           echo "────────────────────────────────────────────────────────────────────"
 
           cd tests
-          # No --theme / --module flag — full repo-wide pass.
+          # No --theme / --module flag - full repo-wide pass.
           node code-quality/lint-orchestrator.js 2>&1 | tee lint-output.txt
           LINT_EXIT_CODE=${PIPESTATUS[0]}
 
           echo "────────────────────────────────────────────────────────────────────"
 
           # Prefer the orchestrator's lint-totals.json; fall back to scraping
-          # stdout, then to a "crashed" message — avoids reporting a false 0/0
-          # when the orchestrator fails before emitting totals.
+          # stdout, then to "crashed". Avoids reporting a false 0/0.
           TOTALS_JSON="reports/lint/lint-totals.json"
           if [ -f "$TOTALS_JSON" ]; then
             LINT_ERRORS=$(jq -r '.errors // 0' "$TOTALS_JSON")
@@ -199,7 +212,7 @@ jobs:
             LINT_ERRORS=0
             LINT_WARNINGS=0
             LINT_TOTALS_EMITTED=false
-            echo "::warning::Lint orchestrator did not emit 'Total errors:' line and lint-totals.json is missing — dumping last 80 lines of output for diagnosis:"
+            echo "::warning::Lint orchestrator did not emit 'Total errors:' line and lint-totals.json is missing - dumping last 80 lines of output for diagnosis:"
             echo "──────── tail of lint-output.txt ────────"
             tail -n 80 lint-output.txt || echo "(lint-output.txt unreadable or empty)"
             echo "──────── end of tail ────────"
@@ -233,9 +246,10 @@ jobs:
     name: Functional / Regression (PHPUnit)
     needs: secrets-scanning
     # Same skip-tests escape hatch as the lint job. Runs in parallel with lint,
-    # before accessibility. Report-only — never fails the build.
+    # before accessibility. Report-only - never fails the build.
     if: ${{ !contains(github.event.pull_request.labels.*.name, 'skip-tests') }}
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     outputs:
       status: ${{ steps.phpunit.outputs.phpunit_status }}
       tests: ${{ steps.phpunit.outputs.phpunit_tests }}
@@ -258,7 +272,7 @@ jobs:
           key: ${{ runner.os }}-composer-${{ hashFiles('composer.lock') }}
           restore-keys: ${{ runner.os }}-composer-
 
-      - name: Install PHP dependencies (with dev — PHPUnit)
+      - name: Install PHP dependencies (with dev - PHPUnit)
         run: |
           for attempt in 1 2 3; do
             if composer install --no-interaction --prefer-dist --optimize-autoloader; then
@@ -269,7 +283,7 @@ jobs:
               echo "❌ composer install failed after 3 attempts"
               exit 1
             fi
-            echo "⚠️ composer install failed on attempt ${attempt} — retrying in 30s..."
+            echo "⚠️ composer install failed on attempt ${attempt} - retrying in 30s..."
             sleep 30
           done
 
@@ -283,7 +297,7 @@ jobs:
         continue-on-error: true
         run: |
           node tests/phpunit/run.js tests/reports/phpunit
-          # Surface a pass/fail summary for the PR comment (report-only — the
+          # Surface a pass/fail summary for the PR comment (report-only - the
           # findings are failing tests; files_scanned is the total run).
           F=tests/reports/phpunit/test-suite-findings.json
           if [ -f "$F" ]; then
@@ -312,16 +326,12 @@ jobs:
   accessibility-testing:
     name: Accessibility Testing - ${{ matrix.theme_name }} Theme
     runs-on: ubuntu-latest
-    # Runs after lint finishes (we want the lint report bundled into the
-    # same SFTP push to each theme's multidev). Each matrix entry deploys
-    # to its own multidev, runs accessibility tests, then SFTPs both lint
-    # and accessibility reports + renders the unified report + posts the
-    # PR comment in a single job — no cross-job artifact round-trip.
+    timeout-minutes: 60
+    # Runs after lint so its report ships in the same SFTP push. Each matrix
+    # entry deploys to its multidev, runs a11y, uploads, renders, and comments.
     needs: [secrets-scanning, lint, functional-testing]
-    # Skip for Dependabot PRs — they run with restricted secrets, so the
-    # push-to-pantheon step would fail. Lint + secrets-scanning still run
-    # and give enough signal for dependency-bump review. Also honor the
-    # 'skip-tests' label (e.g. hotfix releases).
+    # Skip for Dependabot (restricted secrets break push-to-pantheon); lint +
+    # secrets still run. Also honor the 'skip-tests' label.
     if: ${{ github.actor != 'dependabot[bot]' && !contains(github.event.pull_request.labels.*.name, 'skip-tests') }}
 
     strategy:
@@ -336,6 +346,20 @@ jobs:
             source_env: dev
 
     steps:
+      - name: Verify required Pantheon secrets are configured
+        env:
+          PANTHEON_SSH_KEY: ${{ secrets.PANTHEON_SSH_KEY }}
+          PANTHEON_MACHINE_TOKEN: ${{ secrets.PANTHEON_MACHINE_TOKEN }}
+        run: |
+          missing=""
+          [ -z "$PANTHEON_SSH_KEY" ] && missing="$missing PANTHEON_SSH_KEY"
+          [ -z "$PANTHEON_MACHINE_TOKEN" ] && missing="$missing PANTHEON_MACHINE_TOKEN"
+          if [ -n "$missing" ]; then
+            echo "::error::Missing required secret(s):$missing. Configure them in Actions secrets before the accessibility lane runs."
+            exit 1
+          fi
+          echo "Required Pantheon secrets present."
+
       - name: Checkout code
         uses: actions/checkout@v6
 
@@ -377,7 +401,7 @@ jobs:
               echo "❌ composer install failed after 3 attempts"
               exit 1
             fi
-            echo "⚠️ composer install failed on attempt ${attempt} — retrying in 30s..."
+            echo "⚠️ composer install failed on attempt ${attempt} - retrying in 30s..."
             sleep 30
           done
 
@@ -397,7 +421,7 @@ jobs:
         run: |
           cd tests
           if [ "${{ steps.playwright-cache.outputs.cache-hit }}" = "true" ]; then
-            # Browser binaries restored from cache — only the OS-level libs
+            # Browser binaries restored from cache - only the OS-level libs
             # (apt packages) still need installing; skips the ~130 MB download.
             npx playwright install-deps
           else
@@ -406,16 +430,15 @@ jobs:
           echo "✅ Playwright browsers ready"
 
       - name: Download lint report
-        # Lint runs once for the whole repo; the report is shared. Drops files
-        # into `tests/reports/lint/` so the SFTP step can ship them alongside
-        # the accessibility reports. Hard-fails if the artifact is missing.
+        # The one repo-wide lint artifact is shared (into
+        # tests/reports/lint/ for the SFTP step). Hard-fail if it's missing.
         uses: actions/download-artifact@v6
         with:
           name: lint-report
           path: tests/reports/lint
 
       - name: Download PHPUnit report
-        # Report-only lane — don't fail accessibility if it's missing or skipped.
+        # Report-only lane - don't fail accessibility if it's missing or skipped.
         continue-on-error: true
         uses: actions/download-artifact@v6
         with:
@@ -424,7 +447,10 @@ jobs:
 
       - name: Deploy PR changes to ${{ matrix.theme_name }} theme multidev using official Pantheon action
         id: multidev
-        uses: pantheon-systems/push-to-pantheon@0.8.0
+        # Don't hard-fail if the multidev can't be created (e.g. quota reached);
+        # steps below are guarded on it and the run reports as incomplete.
+        continue-on-error: true
+        uses: pantheon-systems/push-to-pantheon@0.9.2
         with:
           ssh_key: ${{ secrets.PANTHEON_SSH_KEY }}
           machine_token: ${{ secrets.PANTHEON_MACHINE_TOKEN }}
@@ -454,6 +480,7 @@ jobs:
           echo "Multidev URL: ${MULTIDEV_URL}"
 
       - name: Run database updates and clear cache for ${{ matrix.theme_name }} theme
+        if: steps.multidev.outcome == 'success'
         run: |
           MULTIDEV_NAME="${{ steps.setvars.outputs.multidev_name }}"
           echo "Running post-deployment updates for ${{ matrix.theme_name }} theme multidev ${MULTIDEV_NAME}..."
@@ -481,6 +508,7 @@ jobs:
           sleep 15  # Allow time for cache clearing to propagate
 
       - name: Wait for ${{ matrix.theme_name }} theme site to be ready
+        if: steps.multidev.outcome == 'success'
         run: |
           echo "⏳ Waiting for ${{ matrix.theme_name }} theme site to be fully ready..."
           MULTIDEV_URL="${{ steps.setvars.outputs.multidev_url }}"
@@ -547,6 +575,7 @@ jobs:
           fi
 
       - name: Setup sitemap for ${{ matrix.theme_name }} theme
+        if: steps.multidev.outcome == 'success'
         run: |
           SITE="${{ matrix.pantheon_site }}"
           MULTIDEV="${{ steps.setvars.outputs.multidev_name }}"
@@ -566,6 +595,12 @@ jobs:
           echo "Checking existing content..."
           CONTENT_COUNT=$(terminus drush ${SITE}.${MULTIDEV} -- sql:query "SELECT COUNT(*) as count FROM node WHERE status = 1" --format=string 2>/dev/null || echo "0")
           echo "Found ${CONTENT_COUNT} published nodes from dev environment"
+
+          # Lock the sitemap base URL to the multidev: CLI generation defaults
+          # to http and the wrong host otherwise, producing <loc> entries the
+          # same-origin checks reject.
+          echo "Setting sitemap base URL to ${MULTIDEV_URL}..."
+          terminus drush ${SITE}.${MULTIDEV} -- config:set simple_sitemap.settings base_url "${MULTIDEV_URL}" -y || echo "Could not set sitemap base_url, continuing"
 
           # Rebuild sitemap queue (helps after DB clones)
           echo "Rebuilding sitemap queue..."
@@ -603,6 +638,7 @@ jobs:
 
       - name: Run Siteimprove Alfa accessibility tests for ${{ matrix.theme_name }} theme
         id: alfa_test
+        if: steps.multidev.outcome == 'success'
         run: |
           MULTIDEV_URL="${{ steps.setvars.outputs.multidev_url }}"
 
@@ -615,31 +651,32 @@ jobs:
           export ALFA_MAX_PAGES=50
           export A11Y_PROFILE=comprehensive
           export A11Y_SEVERITY_LEVELS=critical,serious
-          # The unified report renderer iterates a fixed list of test names
-          # and looks for `{name}/test-suite-findings.json`. The alfa full-site
-          # spec emits with `test: "alfa-full"`, so the directory must match
-          # or the renderer files it under the `alfa` (key-pages) bucket and
-          # the "Detailed reports per tool" link goes missing.
-          export ALFA_OUTPUT_DIR="$(pwd)/reports/alfa-full"
+          # The renderer looks for `{name}/test-suite-findings.json`; the
+          # full-site spec emits `alfa-full`, so the dir must match that name.
+          ALFA_OUTPUT_DIR="$(pwd)/reports/alfa-full"
+          export ALFA_OUTPUT_DIR
 
           mkdir -p reports/alfa-full
 
           # Run the Alfa test (custom HTML report is generated by the spec, no need for Playwright's --reporter=html)
-          if npx playwright test accessibility/alfa/alfa-full-site.spec.js --reporter=list; then
-            echo "alfa_result=passed" >> $GITHUB_OUTPUT
-            echo "✅ Siteimprove Alfa tests passed for ${{ matrix.theme_name }} theme"
-          else
-            echo "alfa_result=failed" >> $GITHUB_OUTPUT
-            echo "❌ Siteimprove Alfa tests failed for ${{ matrix.theme_name }} theme"
-          fi
+          npx playwright test accessibility/alfa/alfa-full-site.spec.js --reporter=list || \
+            echo "⚠️ Alfa spec exited non-zero - deriving the gate from emitted findings"
+
+          # Uniform gate: critical/serious fail, moderate/minor are advisory,
+          # incomplete runs (0 pages, errored pages, no findings file) are
+          # counted as incomplete by the summary step, never as a pass.
+          ALFA_RESULT=$(node accessibility/utils/lane-result.js "${ALFA_OUTPUT_DIR}")
+          echo "alfa_result=${ALFA_RESULT}" >> $GITHUB_OUTPUT
+          echo "Siteimprove Alfa result for ${{ matrix.theme_name }} theme: ${ALFA_RESULT}"
 
           # Set HTML report URL for use in GitHub comments
-          ALFA_REPORT_URL="${MULTIDEV_URL}/sites/default/files/test-reports/alfa-full/alfa-full-site-report.html"
+          ALFA_REPORT_URL="${MULTIDEV_URL}/sites/default/files/test-reports/alfa-full/alfa-full-report.html"
           echo "alfa_report_url=${ALFA_REPORT_URL}" >> $GITHUB_OUTPUT
           echo "Alfa HTML report will be available at: ${ALFA_REPORT_URL}"
 
       - name: Run axe Developer Hub accessibility tests for ${{ matrix.theme_name }} theme
         id: axe_test
+        if: steps.multidev.outcome == 'success'
         run: |
           MULTIDEV_URL="${{ steps.setvars.outputs.multidev_url }}"
 
@@ -648,19 +685,15 @@ jobs:
           # Validate axe API key before running tests
           AXE_KEY="${{ secrets.AXE_API_KEY }}"
           if [ -z "$AXE_KEY" ]; then
-            echo "⚠️ AXE_API_KEY secret is not set — skipping axe Developer Hub tests"
+            echo "⚠️ AXE_API_KEY secret is not set - skipping axe Developer Hub tests"
             echo "axe_result=skipped" >> $GITHUB_OUTPUT
             echo "axe_skip_reason=API key not configured" >> $GITHUB_OUTPUT
             exit 0
           fi
 
-          # Pre-flight connectivity + auth check. axe-watcher streams results
-          # to the Deque Developer Hub on every page, so without a reachable,
-          # authenticated hub the test can only hang or fail. Run it ONLY on a
-          # clean 2xx here; skip on anything else — invalid/expired key (401/403),
-          # hub outage (5xx), or no connection at all (timeout/DNS → 000). Short
-          # timeouts ensure a network problem can't stall the job. The key is
-          # kept so the test resumes automatically once the account is restored.
+          # Pre-flight the Deque hub: axe-watcher streams per page, so an
+          # unreachable or unauthenticated hub would hang or fail. Run only on
+          # a clean 2xx; skip otherwise (bad key, outage, or no connection).
           echo "Checking connection to axe Developer Hub..."
           AXE_CHECK=$(curl -s -o /tmp/axe-check.json -w "%{http_code}" \
             --connect-timeout 10 --max-time 20 \
@@ -674,7 +707,7 @@ jobs:
               ;;
             *)
               AXE_ERR=$(head -c 300 /tmp/axe-check.json 2>/dev/null || true)
-              echo "⚠️ No authenticated connection to axe Developer Hub (HTTP ${AXE_CHECK}) — skipping axe-watcher tests"
+              echo "⚠️ No authenticated connection to axe Developer Hub (HTTP ${AXE_CHECK}) - skipping axe-watcher tests"
               [ -n "$AXE_ERR" ] && echo "   Response: ${AXE_ERR}"
               echo "   Cause: invalid/expired key, hub outage, or no network. axe-core coverage still runs via the axe-full step."
               echo "axe_result=skipped" >> $GITHUB_OUTPUT
@@ -692,7 +725,8 @@ jobs:
           export AXE_API_KEY="${AXE_KEY}"
           export A11Y_PROFILE=comprehensive
           export A11Y_SEVERITY_LEVELS=critical,serious
-          export PLAYWRIGHT_REPORT_DIR="$(pwd)/reports/playwright-axe-watcher-full"
+          PLAYWRIGHT_REPORT_DIR="$(pwd)/reports/playwright-axe-watcher-full"
+          export PLAYWRIGHT_REPORT_DIR
 
           # Ensure output directory exists
           mkdir -p reports/playwright-axe-watcher-full
@@ -713,92 +747,97 @@ jobs:
 
       - name: Run axe-core full-site accessibility tests for ${{ matrix.theme_name }} theme
         id: axe_full_test
+        if: steps.multidev.outcome == 'success'
         continue-on-error: true
         run: |
           MULTIDEV_URL="${{ steps.setvars.outputs.multidev_url }}"
 
           echo "Running axe-core full-site tests for ${{ matrix.theme_name }} theme against ${MULTIDEV_URL}"
 
-          # Free axe-core path — no API key required. Sitemap-wide
-          # coverage parallel to alfa-full / pa11y, and supplies the
-          # 'best-practice' profile tag that axe-watcher contributes only
-          # when AXE_API_KEY is configured + valid; this step is the
-          # reliable fallback so the unified report's chip palette is
-          # populated regardless of subscription status.
+          # Free axe-core path (no API key). Sitemap-wide fallback that keeps
+          # the 'best-practice' chip populated even when axe-watcher is skipped.
           cd tests
           export BASE_URL="${MULTIDEV_URL}"
           export SITEMAP_URL="${MULTIDEV_URL}/sitemap.xml"
           export A11Y_PROFILE=comprehensive
           export A11Y_SEVERITY_LEVELS=critical,serious
           export AXE_MAX_PAGES=50
-          export AXE_OUTPUT_DIR="$(pwd)/reports/axe-full"
+          AXE_OUTPUT_DIR="$(pwd)/reports/axe-full"
+          export AXE_OUTPUT_DIR
 
           mkdir -p reports/axe-full
 
-          if npx playwright test accessibility/axe/axe-full-site.spec.ts --config=playwright.config.ts --reporter=list; then
-            echo "axe_full_result=passed" >> $GITHUB_OUTPUT
-            echo "✅ axe-core full-site tests passed for ${{ matrix.theme_name }} theme"
-          else
-            echo "axe_full_result=failed" >> $GITHUB_OUTPUT
-            echo "❌ axe-core full-site tests found violations for ${{ matrix.theme_name }} theme"
-          fi
+          npx playwright test accessibility/axe/axe-full-site.spec.ts --config=playwright.config.ts --reporter=list || \
+            echo "⚠️ axe-core spec exited non-zero - deriving the gate from emitted findings"
+
+          # Uniform gate: critical/serious fail, moderate/minor are advisory.
+          AXE_FULL_RESULT=$(node accessibility/utils/lane-result.js "${AXE_OUTPUT_DIR}")
+          echo "axe_full_result=${AXE_FULL_RESULT}" >> $GITHUB_OUTPUT
+          echo "axe-core full-site result for ${{ matrix.theme_name }} theme: ${AXE_FULL_RESULT}"
 
       - name: Run reflow audit (WCAG 2.1 SC 1.4.10) for ${{ matrix.theme_name }} theme
         id: reflow_test
+        if: steps.multidev.outcome == 'success'
         continue-on-error: true
         run: |
           MULTIDEV_URL="${{ steps.setvars.outputs.multidev_url }}"
 
           echo "Running reflow audit (320px viewport) for ${{ matrix.theme_name }} theme against ${MULTIDEV_URL}"
 
-          # No rule engine, no API key — Playwright sets viewport to 320px
+          # No rule engine, no API key - Playwright sets viewport to 320px
           # and measures horizontal overflow on every sitemap page. Findings
           # land alongside Alfa/pa11y in the unified report under WCAG 1.4.10.
           cd tests
           export BASE_URL="${MULTIDEV_URL}"
           export SITEMAP_URL="${MULTIDEV_URL}/sitemap.xml"
           export REFLOW_MAX_PAGES=50
-          export REFLOW_OUTPUT_DIR="$(pwd)/reports/reflow"
+          REFLOW_OUTPUT_DIR="$(pwd)/reports/reflow"
+          export REFLOW_OUTPUT_DIR
 
           mkdir -p reports/reflow
 
-          if npx playwright test accessibility/reflow/reflow.spec.js --reporter=list; then
-            echo "reflow_result=passed" >> $GITHUB_OUTPUT
-            echo "✅ Reflow audit passed for ${{ matrix.theme_name }} theme"
-          else
-            echo "reflow_result=failed" >> $GITHUB_OUTPUT
-            echo "❌ Reflow audit found violations for ${{ matrix.theme_name }} theme"
-          fi
+          npx playwright test accessibility/reflow/reflow.spec.js --reporter=list || \
+            echo "⚠️ Reflow spec exited non-zero - deriving the gate from emitted findings"
+
+          # Uniform gate: reflow findings are serious by definition, so any
+          # finding fails; incomplete runs are never read as a pass.
+          REFLOW_RESULT=$(node accessibility/utils/lane-result.js "${REFLOW_OUTPUT_DIR}")
+          echo "reflow_result=${REFLOW_RESULT}" >> $GITHUB_OUTPUT
+          echo "Reflow audit result for ${{ matrix.theme_name }} theme: ${REFLOW_RESULT}"
 
       - name: Run meta-viewport audit (WCAG 2.0 SC 1.4.4) for ${{ matrix.theme_name }} theme
         id: meta_viewport_test
+        if: steps.multidev.outcome == 'success'
         continue-on-error: true
         run: |
           MULTIDEV_URL="${{ steps.setvars.outputs.multidev_url }}"
 
           echo "Running meta-viewport audit for ${{ matrix.theme_name }} theme against ${MULTIDEV_URL}"
 
-          # Static DOM check — reads the <meta name="viewport"> tag on each
+          # Static DOM check - reads the <meta name="viewport"> tag on each
           # sitemap page and flags `user-scalable=no` or `maximum-scale<2`
           # (zoom-blocking directives that violate SC 1.4.4 Resize Text).
           cd tests
           export BASE_URL="${MULTIDEV_URL}"
           export SITEMAP_URL="${MULTIDEV_URL}/sitemap.xml"
           export META_VIEWPORT_MAX_PAGES=50
-          export META_VIEWPORT_OUTPUT_DIR="$(pwd)/reports/meta-viewport"
+          META_VIEWPORT_OUTPUT_DIR="$(pwd)/reports/meta-viewport"
+          export META_VIEWPORT_OUTPUT_DIR
 
           mkdir -p reports/meta-viewport
 
-          if npx playwright test accessibility/meta-viewport/meta-viewport.spec.js --reporter=list; then
-            echo "meta_viewport_result=passed" >> $GITHUB_OUTPUT
-            echo "✅ Meta-viewport audit passed for ${{ matrix.theme_name }} theme"
-          else
-            echo "meta_viewport_result=failed" >> $GITHUB_OUTPUT
-            echo "❌ Meta-viewport audit found violations for ${{ matrix.theme_name }} theme"
-          fi
+          npx playwright test accessibility/meta-viewport/meta-viewport.spec.js --reporter=list || \
+            echo "⚠️ Meta-viewport spec exited non-zero - deriving the gate from emitted findings"
+
+          # Uniform gate: meta-viewport findings are serious by definition,
+          # so any finding fails; incomplete runs are never read as a pass.
+          META_VIEWPORT_RESULT=$(node accessibility/utils/lane-result.js "${META_VIEWPORT_OUTPUT_DIR}")
+          echo "meta_viewport_result=${META_VIEWPORT_RESULT}" >> $GITHUB_OUTPUT
+          echo "Meta-viewport audit result for ${{ matrix.theme_name }} theme: ${META_VIEWPORT_RESULT}"
 
       - name: Run pa11y accessibility tests for ${{ matrix.theme_name }} theme
         id: pa11y_test
+        if: steps.multidev.outcome == 'success'
         continue-on-error: true
         run: |
           MULTIDEV_URL="${{ steps.setvars.outputs.multidev_url }}"
@@ -809,9 +848,10 @@ jobs:
           cd tests
           mkdir -p reports/pa11y
 
-          # Mirrors the runtime config produced by drush utest:a11y:pa11y.
-          # pa11y-ci v4 ignores the 'sitemap' key in config; the sitemap
-          # URL is passed via CLI flag below.
+          # Mirrors the runtime config produced by drush utest:pa11y, plus
+          # CI-only Chrome flags: GitHub runners restrict unprivileged user
+          # namespaces, so Chrome's sandbox cannot start and crashes without
+          # --no-sandbox; --disable-dev-shm-usage avoids the small /dev/shm.
           cat > .pa11yci.json <<'PA11YCFG'
           {
             "defaults": {
@@ -820,7 +860,7 @@ jobs:
               "timeout": 90000,
               "userAgent": "pa11y-ci accessibility testing",
               "chromeLaunchConfig": {
-                "args": ["--ignore-certificate-errors"]
+                "args": ["--ignore-certificate-errors", "--no-sandbox", "--disable-dev-shm-usage"]
               }
             },
             "concurrency": 4
@@ -830,24 +870,59 @@ jobs:
           JSON_PATH="reports/pa11y/pa11y-report.json"
           LOG_PATH="reports/pa11y/pa11y.log"
 
-          if npx pa11y-ci --sitemap "${SITEMAP_URL}" --json > "${JSON_PATH}" 2>"${LOG_PATH}"; then
-            echo "pa11y_result=passed" >> $GITHUB_OUTPUT
-            echo "✅ pa11y tests passed for ${{ matrix.theme_name }} theme"
+          # Resolve sitemap URLs ourselves (same origin and count validation
+          # as the other lanes) instead of passing --sitemap: pa11y-ci's own
+          # fetch treats a challenged or unparseable response as zero URLs
+          # and exits clean, which read as a silent empty run. The bypass
+          # header gets the real sitemap past Pantheon's bot challenge, and
+          # page requests send it too.
+          export SITEMAP_URL MULTIDEV_URL
+          if node --input-type=module -e "
+            import { fetchSitemapUrls } from './accessibility/utils/sitemap.js';
+            import { readFileSync, writeFileSync } from 'fs';
+            const urls = await fetchSitemapUrls(process.env.SITEMAP_URL, {
+              baseUrl: process.env.MULTIDEV_URL,
+              maxPages: 0,
+              headers: { 'Deterrence-Bypass': '1' },
+            });
+            const cfg = JSON.parse(readFileSync('.pa11yci.json', 'utf8'));
+            cfg.urls = urls;
+            cfg.defaults.headers = { 'Deterrence-Bypass': '1' };
+            writeFileSync('.pa11yci.json', JSON.stringify(cfg, null, 2));
+            console.log('pa11y will test ' + urls.length + ' page(s)');
+          "; then
+            # pa11y-ci exits non-zero on ANY issue, including warnings and
+            # notices, so its exit code alone cannot express the
+            # critical/serious-only gate. The gate is computed below from
+            # the emitted findings.
+            if npx pa11y-ci --json > "${JSON_PATH}" 2>"${LOG_PATH}"; then
+              echo "✅ pa11y-ci ran clean for ${{ matrix.theme_name }} theme"
+            else
+              echo "⚠️ pa11y-ci exited non-zero for ${{ matrix.theme_name }} theme (issues found or crash) - gating on normalized severities below"
+            fi
           else
-            echo "pa11y_result=failed" >> $GITHUB_OUTPUT
-            echo "❌ pa11y tests found violations for ${{ matrix.theme_name }} theme"
+            echo "⚠️ Could not resolve sitemap URLs for pa11y - lane reports incomplete"
           fi
 
           # Emit unified test-suite-findings.json so the renderer can aggregate
-          # pa11y alongside alfa / axe / lint. Failure here is informational —
-          # the legacy per-test report still works.
+          # pa11y alongside alfa / axe / lint. --html also renders the per-lane
+          # pa11y-report.html here on the runner: the drush command's bespoke
+          # HTML report only exists on local runs, and Pantheon cannot run the
+          # test tooling itself.
           if [ -s "${JSON_PATH}" ]; then
-            if node accessibility/pa11y/emit-findings.js "$(pwd)/reports/pa11y"; then
-              echo "✅ pa11y test-suite-findings.json emitted"
+            if node accessibility/pa11y/emit-findings.js "$(pwd)/reports/pa11y" --html; then
+              echo "✅ pa11y test-suite-findings.json + HTML report emitted"
             else
-              echo "⚠️ pa11y test-suite-findings.json emission failed (per-test report still available)"
+              echo "⚠️ pa11y findings emission failed (raw JSON report still available)"
             fi
           fi
+
+          # Uniform gate, same policy as Alfa: critical/serious fail,
+          # moderate/minor are advisory, missing findings JSON (crash or
+          # empty run) reports incomplete rather than a pass.
+          PA11Y_RESULT=$(node accessibility/utils/lane-result.js "$(pwd)/reports/pa11y")
+          echo "pa11y_result=${PA11Y_RESULT}" >> $GITHUB_OUTPUT
+          echo "pa11y result for ${{ matrix.theme_name }} theme: ${PA11Y_RESULT}"
 
       - name: Compute multidev URL and overall status
         id: summary
@@ -860,26 +935,62 @@ jobs:
 
           ALFA="${{ steps.alfa_test.outputs.alfa_result }}"
           AXE="${{ steps.axe_test.outputs.axe_result }}"
+          AXE_FULL="${{ steps.axe_full_test.outputs.axe_full_result }}"
+          REFLOW="${{ steps.reflow_test.outputs.reflow_result }}"
+          META_VIEWPORT="${{ steps.meta_viewport_test.outputs.meta_viewport_result }}"
+          PA11Y="${{ steps.pa11y_test.outputs.pa11y_result }}"
+          MULTIDEV_OUTCOME="${{ steps.multidev.outcome }}"
 
-          # Treat skipped/empty as non-blocking. The PR comment surfaces
-          # the gap honestly; no need to fail the job for it.
-          is_pass_or_skip() {
-            case "$1" in
-              passed|skipped|"") return 0 ;;
-              *) return 1 ;;
+          # Uniform three-state rollup over every a11y lane: any lane with
+          # critical/serious findings fails; any lane that is incomplete or
+          # produced no result makes the run incomplete (never a pass);
+          # advisory findings and an allowed axe-watcher skip still pass.
+          FAILED=0
+          INCOMPLETE=0
+          for RESULT in "$ALFA" "$AXE_FULL" "$REFLOW" "$META_VIEWPORT" "$PA11Y"; do
+            case "$RESULT" in
+              failed) FAILED=1 ;;
+              incomplete|"") INCOMPLETE=1 ;;
             esac
-          }
+          done
+          # axe watcher may legitimately skip (no Deque key); only its
+          # explicit failure or a missing result while unskipped counts.
+          case "$AXE" in
+            failed) FAILED=1 ;;
+            "") INCOMPLETE=1 ;;
+          esac
 
-          if is_pass_or_skip "$ALFA" && is_pass_or_skip "$AXE"; then
-            echo "overall_result=passed" >> $GITHUB_OUTPUT
-            echo "status_icon=✅" >> $GITHUB_OUTPUT
-          else
-            echo "overall_result=failed" >> $GITHUB_OUTPUT
+          if [ "$FAILED" -eq 1 ]; then
+            OVERALL="failed"
             echo "status_icon=❌" >> $GITHUB_OUTPUT
+          elif [ "$MULTIDEV_OUTCOME" != "success" ] || [ "$INCOMPLETE" -eq 1 ]; then
+            OVERALL="incomplete"
+            echo "status_icon=⚠️" >> $GITHUB_OUTPUT
+          else
+            OVERALL="passed"
+            echo "status_icon=✅" >> $GITHUB_OUTPUT
           fi
+          echo "overall_result=${OVERALL}" >> $GITHUB_OUTPUT
+
+          # Mirror the local `drush utest:all` summary table on the Actions
+          # run page. Lane values: passed / findings (advisory only) /
+          # failed (critical or serious) / incomplete; empty = did not run.
+          {
+            echo "### Test Suite Summary - ${{ matrix.theme_display_name }}"
+            echo ""
+            echo "| Lane | Result |"
+            echo "| --- | --- |"
+            echo "| Siteimprove Alfa | ${ALFA:-did not run} |"
+            echo "| axe Developer Hub | ${AXE:-did not run} |"
+            echo "| axe-core (full site) | ${AXE_FULL:-did not run} |"
+            echo "| pa11y | ${PA11Y:-did not run} |"
+            echo "| Reflow (WCAG 1.4.10) | ${REFLOW:-did not run} |"
+            echo "| Meta-viewport (WCAG 1.4.4) | ${META_VIEWPORT:-did not run} |"
+            echo "| **Overall** | **${OVERALL}** |"
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Re-stamp lint report surface for ${{ matrix.theme_name }} multidev
-        if: always()
+        if: always() && steps.multidev.outcome == 'success'
         env:
           # The lint report was baked in the repo-wide `lint` job before this
           # multidev existed, so it reads "Local (<branch>)". Re-stamp it with
@@ -893,10 +1004,10 @@ jobs:
             reports/lint/test-suite-findings.json
 
       - name: Upload all test reports to ${{ matrix.theme_name }} multidev via SFTP
-        if: always()
+        if: always() && steps.multidev.outcome == 'success'
         run: |
           # Reports must always be published so reviewers can see findings
-          # — even on partial test failures or transient rsync errors.
+          # - even on partial test failures or transient rsync errors.
           # Track issues but never abort early.
           set +e
           upload_failed=0
@@ -927,7 +1038,7 @@ jobs:
               break
             fi
             if grep -q "Integrated Composer build" /tmp/sftp-err; then
-              echo "Integrated Composer still building (attempt ${attempt}/30) — waiting 20s..."
+              echo "Integrated Composer still building (attempt ${attempt}/30) - waiting 20s..."
               sleep 20
             else
               echo "::warning::SFTP mode switch failed with non-IC error:"
@@ -936,7 +1047,7 @@ jobs:
             fi
           done
           if [ "$sftp_ready" -eq 0 ]; then
-            echo "::warning::Could not switch to SFTP mode — uploads will be skipped, report-render will still run against existing files on the multidev"
+            echo "::warning::Could not switch to SFTP mode - uploads will be skipped, report-render will still run against existing files on the multidev"
             upload_failed=1
           fi
           sleep 10
@@ -974,10 +1085,13 @@ jobs:
             local dest_subpath="$2"
             if [ -d "$src" ] && [ "$(ls -A $src 2>/dev/null)" ]; then
               echo "Uploading $src ..."
-              if ! rsync -rlvz --size-only --ipv4 --progress -e 'ssh -p 2222 -o StrictHostKeyChecking=no' \
+              # --delete mirrors each lane dir exactly, so report files from
+              # older runs (e.g. renamed or redesigned reports) don't linger
+              # on the multidev and serve stale layouts.
+              if ! rsync -rlvz --delete --size-only --ipv4 --progress -e 'ssh -p 2222 -o StrictHostKeyChecking=no' \
                 "$src/" \
                 ${SFTP_USER}@${SFTP_HOST}:files/test-reports/${dest_subpath}/; then
-                echo "::warning::rsync of $src failed — continuing with remaining uploads"
+                echo "::warning::rsync of $src failed - continuing with remaining uploads"
                 upload_failed=1
               fi
             else
@@ -1003,13 +1117,13 @@ jobs:
           # Always render the unified report so reviewers see whatever
           # findings made it through, even on partial uploads.
           terminus drush ${SITE}.${MULTIDEV} -- utest:report-render || \
-            echo "::warning::utest:report-render failed — Test Report may be stale"
+            echo "::warning::utest:report-render failed - Test Report may be stale"
 
           # Always switch back to git mode regardless of outcome.
           terminus connection:set ${SITE}.${MULTIDEV} git || true
 
           if [ "$upload_failed" -eq 1 ]; then
-            echo "::warning::Some report uploads failed — see warnings above. The unified Test Report is still rendered with whatever was published."
+            echo "::warning::Some report uploads failed - see warnings above. The unified Test Report is still rendered with whatever was published."
           fi
 
       - name: Post individual theme results comment
@@ -1022,6 +1136,10 @@ jobs:
           ALFA_STATUS: ${{ steps.alfa_test.outputs.alfa_result }}
           AXE_STATUS: ${{ steps.axe_test.outputs.axe_result }}
           AXE_SKIP_REASON: ${{ steps.axe_test.outputs.axe_skip_reason }}
+          PA11Y_STATUS: ${{ steps.pa11y_test.outputs.pa11y_result }}
+          AXE_FULL_STATUS: ${{ steps.axe_full_test.outputs.axe_full_result }}
+          REFLOW_STATUS: ${{ steps.reflow_test.outputs.reflow_result }}
+          META_VIEWPORT_STATUS: ${{ steps.meta_viewport_test.outputs.meta_viewport_result }}
           LINT_STATUS: ${{ needs.lint.outputs.result }}
           LINT_ERRORS: ${{ needs.lint.outputs.errors }}
           LINT_WARNINGS: ${{ needs.lint.outputs.warnings }}
@@ -1031,6 +1149,7 @@ jobs:
           PHPUNIT_FAILURES: ${{ needs.functional-testing.outputs.failures }}
           OVERALL_STATUS: ${{ steps.summary.outputs.overall_result }}
           STATUS_ICON: ${{ steps.summary.outputs.status_icon }}
+          MULTIDEV_OUTCOME: ${{ steps.multidev.outcome }}
           A11Y_PROFILE: ${{ env.A11Y_PROFILE }}
         with:
           script: |
@@ -1040,6 +1159,9 @@ jobs:
             const overallStatus = process.env.OVERALL_STATUS || 'unknown';
             const statusIcon = process.env.STATUS_ICON || '';
             const profile = process.env.A11Y_PROFILE || 'comprehensive';
+            // Reports exist only when the multidev was created (the SFTP upload
+            // is gated on it); skip the links otherwise so they don't 404.
+            const reportsAvailable = process.env.MULTIDEV_OUTCOME === 'success';
 
             const PROFILE_CRITERIA = {
               strict: 'WCAG 2.0 Level A, WCAG 2.1 Level A',
@@ -1049,9 +1171,15 @@ jobs:
             };
             const profileCriteria = PROFILE_CRITERIA[profile] || `profile-defined (\`${profile}\`)`;
 
-            const unifiedReportUrl = `${multidevUrl}/sites/default/files/test-reports/index.html`;
-            const alfaReportUrl    = `${multidevUrl}/sites/default/files/test-reports/alfa-full/alfa-full-site-report.html`;
-            const lintReportUrl    = `${multidevUrl}/sites/default/files/test-reports/lint/lint-report.html`;
+            const reportBase = `${multidevUrl}/sites/default/files/test-reports`;
+            const unifiedReportUrl      = `${reportBase}/index.html`;
+            const alfaReportUrl         = `${reportBase}/alfa-full/alfa-full-report.html`;
+            const axeFullReportUrl      = `${reportBase}/axe-full/axe-full-report.html`;
+            const pa11yReportUrl        = `${reportBase}/pa11y/pa11y-report.html`;
+            const reflowReportUrl       = `${reportBase}/reflow/reflow-report.html`;
+            const metaViewportReportUrl = `${reportBase}/meta-viewport/meta-viewport-report.html`;
+            const lintReportUrl         = `${reportBase}/lint/lint-report.html`;
+            const phpunitReportUrl      = `${reportBase}/phpunit/phpunit-report.html`;
 
             const lintStatus = process.env.LINT_STATUS || 'unknown';
             const lintErrors = process.env.LINT_ERRORS || '0';
@@ -1059,28 +1187,26 @@ jobs:
             const lintTotalsEmitted = process.env.LINT_TOTALS_EMITTED === 'true';
             // Pick the right message: clean pass, non-zero counts, real
             // zero counts but exit-non-zero (audit advisory etc.), or
-            // orchestrator crashed before printing totals.
-            let lintDetail = 'Unknown';
+            // orchestrator crashed before printing totals. The fallback
+            // covers a lint job that never produced a result.
+            let lintDetail = '⚠️ Did not run - check the lint job';
             if (lintStatus === 'passed') {
               lintDetail = '✅ Passed';
             } else if (lintStatus === 'failed') {
               const e = parseInt(lintErrors, 10) || 0;
               const w = parseInt(lintWarnings, 10) || 0;
               if (!lintTotalsEmitted) {
-                lintDetail = '⚠️ Lint orchestrator crashed before emitting totals — check the lint job logs';
+                lintDetail = '⚠️ Lint orchestrator crashed before emitting totals - check the lint job logs';
               } else if (e === 0 && w === 0) {
-                lintDetail = '⚠️ 0 errors / 0 warnings, but lint exited non-zero (composer audit or sub-tool flagged something — check the lint job logs)';
+                lintDetail = '⚠️ 0 errors / 0 warnings, but lint exited non-zero (composer audit or sub-tool flagged something - check the lint job logs)';
               } else {
                 lintDetail = `⚠️ ${e} error(s), ${w} warning(s)`;
               }
             }
 
-            // axe Developer Hub (Deque) requires the AXE_API_KEY secret and a
-            // live Deque connection; it is skipped (not failed) when the key is
-            // inactive/absent or the hub is unreachable. Surface that explicitly
-            // so reviewers don't read a silent omission as a pass.
-            // Functional / Regression (custom-module PHPUnit). Report-only —
-            // failing tests are flagged but never block the build.
+            // axe Developer Hub needs AXE_API_KEY + a live hub; skipped (not
+            // failed) when unavailable, so a skip isn't read as a pass.
+            // Functional / Regression PHPUnit is report-only; failures never block.
             const phpunitStatus = process.env.PHPUNIT_STATUS || 'unknown';
             const phpunitTests = process.env.PHPUNIT_TESTS || '0';
             const phpunitFailures = process.env.PHPUNIT_FAILURES || '0';
@@ -1092,50 +1218,111 @@ jobs:
             } else if (phpunitStatus === 'skipped') {
               phpunitDetail = '⚠️ No custom-module tests found';
             } else {
-              phpunitDetail = 'Unknown';
+              // The PHPUnit job never produced a result.
+              phpunitDetail = '⚠️ Did not run - check the PHPUnit job';
             }
 
-            const axeStatus = process.env.AXE_STATUS || 'unknown';
+            // Every a11y lane gates on the same policy: critical/serious
+            // findings fail the check; moderate/minor are advisory;
+            // incomplete runs are flagged distinctly, never as a pass.
+            const laneDetail = (status) => {
+              if (status === 'passed') return '✅ Passed';
+              if (status === 'failed') return '❌ Failed (critical/serious issues)';
+              if (status === 'findings') return '⚠️ Advisory findings only (moderate/minor - see Test Report)';
+              if (status === 'incomplete') return '⚠️ Incomplete - not a confirmed pass';
+              return '⚠️ Did not run';
+            };
+            const pa11yDetail = laneDetail(process.env.PA11Y_STATUS || '');
+            const axeFullDetail = laneDetail(process.env.AXE_FULL_STATUS || '');
+            const reflowDetail = laneDetail(process.env.REFLOW_STATUS || '');
+            const metaViewportDetail = laneDetail(process.env.META_VIEWPORT_STATUS || '');
+
+            // Name the lanes behind a failed overall status, mirroring the
+            // closing line of a local `drush utest:all` run.
+            const laneStatuses = [
+              ['Siteimprove Alfa', process.env.ALFA_STATUS || ''],
+              ['axe Developer Hub', process.env.AXE_STATUS || ''],
+              ['axe-core (full site)', process.env.AXE_FULL_STATUS || ''],
+              ['pa11y', process.env.PA11Y_STATUS || ''],
+              ['Reflow', process.env.REFLOW_STATUS || ''],
+              ['Meta-viewport', process.env.META_VIEWPORT_STATUS || ''],
+            ];
+            const failedLaneNames = laneStatuses
+              .filter(([, s]) => s === 'failed' || s === 'incomplete')
+              .map(([name]) => name);
+
+            const axeStatus = process.env.AXE_STATUS || '';
             const axeSkipReason = process.env.AXE_SKIP_REASON || '';
             let axeDetail;
             if (axeStatus === 'passed') {
               axeDetail = '✅ Passed';
             } else if (axeStatus === 'failed') {
-              axeDetail = '❌ Failed';
+              axeDetail = '❌ Failed (critical/serious issues)';
             } else if (axeStatus === 'skipped') {
-              axeDetail = `⚠️ Did not run — Deque key inactive or no connection${axeSkipReason ? ` (${axeSkipReason})` : ''}`;
+              axeDetail = `⚠️ Did not run - Deque key inactive or no connection${axeSkipReason ? ` (${axeSkipReason})` : ''}`;
             } else {
-              axeDetail = 'Unknown';
+              // Step never executed (e.g. the multidev was not created).
+              axeDetail = '⚠️ Did not run';
             }
 
             let comment = `## ${statusIcon} Accessibility & Code Quality Testing - ${themeDisplayName}\n\n`;
-            comment += `**Accessibility profile**: \`${profile}\` — covers ${profileCriteria}\n\n`;
+            comment += `**Accessibility profile**: \`${profile}\` - covers ${profileCriteria}\n\n`;
             comment += `### Test Results Summary\n`;
             comment += `- **Overall Status**: ${statusIcon} ${overallStatus.toUpperCase()}\n`;
-            comment += `- **Siteimprove Alfa**: ${alfaStatus === 'passed' ? '✅ Passed' : alfaStatus === 'failed' ? '❌ Failed' : 'Unknown'}\n`;
+            comment += `- **Siteimprove Alfa**: ${laneDetail(alfaStatus === 'unknown' ? '' : alfaStatus)}\n`;
             comment += `- **axe Developer Hub (Deque)**: ${axeDetail}\n`;
+            comment += `- **axe-core (full site)**: ${axeFullDetail}\n`;
+            comment += `- **pa11y**: ${pa11yDetail}\n`;
+            comment += `- **Reflow (WCAG 1.4.10)**: ${reflowDetail}\n`;
+            comment += `- **Meta-viewport (WCAG 1.4.4)**: ${metaViewportDetail}\n`;
             comment += `- **Code Linting**: ${lintDetail}\n`;
             comment += `- **Functional / Regression (PHPUnit)**: ${phpunitDetail}\n`;
-            comment += `- **Test Environment**: [${multidevUrl}](${multidevUrl})\n\n`;
-            comment += `### Detailed Reports\n`;
-            comment += `- [**Test Report**](${unifiedReportUrl}) — Combined accessibility, security, and code quality. **Start here.**\n`;
-            comment += `- [Siteimprove Alfa Report](${alfaReportUrl}) — Interactive WCAG compliance analysis\n`;
-            comment += `- [Code Linting Report](${lintReportUrl}) — Code quality and static accessibility checks\n\n`;
+            if (reportsAvailable) {
+              comment += `- **Test Environment**: [${multidevUrl}](${multidevUrl})\n\n`;
+              comment += `### Detailed Reports\n`;
+              comment += `- [**Test Report**](${unifiedReportUrl}) - Combined accessibility, security, and code quality. **Start here.**\n`;
+              comment += `- [Siteimprove Alfa](${alfaReportUrl})\n`;
+              comment += `- [axe-core (full site)](${axeFullReportUrl})\n`;
+              comment += `- [pa11y](${pa11yReportUrl})\n`;
+              comment += `- [Reflow (WCAG 1.4.10)](${reflowReportUrl})\n`;
+              comment += `- [Meta-viewport (WCAG 1.4.4)](${metaViewportReportUrl})\n`;
+              comment += `- [Code Linting](${lintReportUrl})\n`;
+              comment += `- [PHPUnit (Functional / Regression)](${phpunitReportUrl})\n\n`;
+            } else {
+              // No multidev, so no browsable a11y reports. Lint and PHPUnit
+              // ran on the CI runner; their reports are workflow artifacts.
+              const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+              comment += `- **Test Environment**: not created (accessibility reports not published)\n\n`;
+              comment += `### Detailed Reports\n`;
+              comment += `Code Linting and PHPUnit ran on the CI runner; download their reports here:\n`;
+              let artifactLinks = '';
+              try {
+                const { data } = await github.rest.actions.listWorkflowRunArtifacts({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  run_id: context.runId,
+                });
+                const wanted = { 'lint-report': 'Code Linting report', 'phpunit-report': 'PHPUnit report' };
+                artifactLinks = data.artifacts
+                  .filter(a => wanted[a.name])
+                  .map(a => `- [${wanted[a.name]}](${runUrl}/artifacts/${a.id}) (zip)\n`)
+                  .join('');
+              } catch (error) {
+                console.log(`Could not list run artifacts: ${error.message}`);
+              }
+              comment += artifactLinks || `- [Workflow run](${runUrl}) - see the \`lint-report\` and \`phpunit-report\` artifacts at the bottom of the page\n`;
+              comment += `\n`;
+            }
 
             if (overallStatus === 'passed') {
               comment += `### ✅ Success!\n`;
               comment += `All accessibility tests passed for ${themeDisplayName} under the \`${profile}\` profile (${profileCriteria}).\n\n`;
             } else if (overallStatus === 'failed') {
               comment += `### ❌ Action Required\n`;
-              comment += `Accessibility violations were found in ${themeDisplayName}. Please review the detailed reports above and fix the identified issues.\n\n`;
-              comment += `**Next Steps:**\n`;
-              comment += `1. Review the detailed violation reports linked above\n`;
-              comment += `2. Fix critical and serious accessibility issues\n`;
-              comment += `3. Test your changes using the multidev URL\n`;
-              comment += `4. Push changes to trigger new tests\n\n`;
+              comment += `Lanes with critical/serious findings or incomplete runs: ${failedLaneNames.join(', ')}. Details are in the reports above.\n\n`;
             } else {
-              comment += `### Test Status Unknown\n`;
-              comment += `There may have been an issue running accessibility tests for ${themeDisplayName}. Please check the workflow logs for details.\n\n`;
+              comment += `### ⚠️ Results Incomplete\n`;
+              comment += `Accessibility tests did not run to completion for ${themeDisplayName}, so this is **not a confirmed pass** (and not a code failure). The test environment was likely unavailable; most often the multidev could not be created because the multidev quota was reached. Free a slot (close old PRs) and re-run, then check the logs.\n\n`;
             }
 
             comment += `---\n`;
@@ -1153,8 +1340,15 @@ jobs:
               console.error(`Failed to post comment for ${themeDisplayName}:`, error);
             }
 
+      # Anything other than a clean pass goes red, so a green check always means
+      # "tests ran and passed". Incomplete (tests did not run) is labelled
+      # distinctly from a real failure.
       - name: Set job status for ${{ matrix.theme_name }} theme
-        if: steps.summary.outputs.overall_result == 'failed'
+        if: steps.summary.outputs.overall_result != 'passed'
         run: |
-          echo "Accessibility tests failed for ${{ matrix.theme_name }} theme"
+          if [ "${{ steps.summary.outputs.overall_result }}" = "incomplete" ]; then
+            echo "::error::${{ matrix.theme_name }}: accessibility tests did not run to completion (incomplete, not a confirmed pass). Usually the multidev was not created; see the PR comment."
+          else
+            echo "::error::${{ matrix.theme_name }}: accessibility tests found serious/critical issues. See the PR comment and report."
+          fi
           exit 1

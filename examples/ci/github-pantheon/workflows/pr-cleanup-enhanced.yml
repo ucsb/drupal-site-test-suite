@@ -13,9 +13,14 @@ on:
   workflow_dispatch:
     inputs:
       pr_number:
-        description: 'PR number to cleanup (optional - will cleanup all if not specified)'
+        description: 'PR number to cleanup. Leave empty only for a full sweep (requires confirm_all).'
         required: false
         type: string
+      confirm_all:
+        description: 'Confirm deleting ALL pr-* multidevs when no PR number is given. This also removes environments for PRs still under review.'
+        required: false
+        type: boolean
+        default: false
       force_cleanup:
         description: 'Force cleanup even if multidev deletion fails'
         required: false
@@ -42,7 +47,7 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
 
       - name: Install Pantheon CLI
         run: |
@@ -72,9 +77,16 @@ jobs:
             PR_NUMBER="${{ github.event.inputs.pr_number }}"
             echo "cleanup_reason=Manual cleanup requested for PR #${PR_NUMBER}" >> $GITHUB_OUTPUT
           else
-            # Manual trigger without PR number - will cleanup all pr-* multidevs
+            # Manual trigger without PR number - would delete ALL pr-*
+            # multidevs, including environments for PRs still under review.
+            # Require explicit confirmation; the normal path is one PR at
+            # close time.
+            if [[ "${{ github.event.inputs.confirm_all }}" != "true" ]]; then
+              echo "::error::No pr_number given. A full sweep deletes ALL pr-* multidevs, including ones for PRs still under review. Re-run with a pr_number, or set confirm_all to true for a deliberate full sweep."
+              exit 1
+            fi
             PR_NUMBER=""
-            echo "cleanup_reason=Manual cleanup of all PR multidevs requested" >> $GITHUB_OUTPUT
+            echo "cleanup_reason=Manual cleanup of all PR multidevs requested (confirm_all set)" >> $GITHUB_OUTPUT
           fi
 
           echo "pr_number=${PR_NUMBER}" >> $GITHUB_OUTPUT
@@ -272,21 +284,13 @@ jobs:
             const action = '${{ github.event.action }}';
             const cleanupGithub = '${{ github.event.inputs.cleanup_github_environments || 'true' }}';
 
-            let comment = `## Enhanced Multidev Cleanup Complete\n\n`;
-            comment += `PR #${prNumber} was **${action}** - multidev environments have been cleaned up.\n\n`;
-            comment += `### Cleaned Up Environments:\n`;
+            let comment = `## Multidev Cleanup Complete\n\n`;
+            comment += `PR #${prNumber} was **${action}** - test environments have been cleaned up:\n\n`;
             comment += `- \`pr-${prNumber}\` multidevs on all configured Pantheon sites\n`;
 
             if (cleanupGithub === 'true') {
               comment += `- GitHub deployment environment: \`pr-${prNumber}\`\n`;
             }
-
-            comment += `\n### Enhanced Features:\n`;
-            comment += `- ✅ Automated multidev detection and cleanup\n`;
-            comment += `- ✅ GitHub deployment environment cleanup\n`;
-            comment += `- ✅ Multi-site support\n`;
-            comment += `- ✅ Robust error handling\n\n`;
-            comment += `*Multidev environments are automatically cleaned up when PRs are closed or merged.*`;
 
             await github.rest.issues.createComment({
               issue_number: prNumber,

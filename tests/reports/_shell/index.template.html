@@ -1,22 +1,31 @@
 <!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
+<html lang="en"><head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+  
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Accessibility, Security, and Code Quality Report</title>
   <style>
     /* Reset + base */
     *, *::before, *::after { box-sizing: border-box; }
     :root {
-      --color-bg: #f6f7f9;
-      --color-surface: #ffffff;
-      --color-text: #1f2328;
-      --color-text-muted: #5f6b7a;
-      --color-border: #d6dbe2;
-      --color-border-strong: #b6bdc6;
-      --color-accent: #0b5cad;
-      --color-accent-bg: #e7f0fb;
+      /* Brand tokens: re-skin the whole report by editing these four values.
+         Defaults are navy + gold; every other color re-derives from them. */
+      --brand-primary:     #003660;  /* masthead + links + primary accents */
+      --brand-primary-ink: #ffffff;  /* text/marks sitting on the primary  */
+      --brand-accent:      #febc11;  /* gold highlight rule + section marks */
+      --brand-accent-ink:  #2a2100;  /* text sitting on the accent          */
 
+      /* Neutral surfaces + semantic tokens (tuned to the brand tone) */
+      --color-bg: #eef2f6;
+      --color-surface: #ffffff;
+      --color-surface-2: #f5f8fb;
+      --color-text: #172431;
+      --color-text-muted: #5a6b7b;
+      --color-border: #d6dee7;
+      --color-border-strong: #b4c1cd;
+      --color-accent: var(--brand-primary);
+      --color-accent-bg: #e6eef6;
+
+      /* Severity palette — semantic, kept AA-legible on its own bg */
       --severity-critical: #9b1c15;
       --severity-serious:  #8b3409;
       --severity-moderate: #6a4900;
@@ -29,23 +38,59 @@
       --severity-minor-bg:    #e3f0f6;
       --severity-pass-bg:     #e3f3e7;
 
-      --radius: 8px;
-      --shadow: 0 1px 3px rgba(0, 0, 0, 0.06), 0 1px 2px rgba(0, 0, 0, 0.04);
-      /* Outer page-card shadow — matches the lint report's container so both
-         reports read as the same white card floating on a gray background. */
-      --shadow-card: 0 2px 10px rgba(0, 0, 0, 0.1);
-      --max-width: 1080px;
+      /* Type: self-contained system stack, zero external requests */
+      --font-sans: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      --font-mono: ui-monospace, "SF Mono", "Cascadia Code", Menlo, Consolas, monospace;
+
+      --radius: 5px;        /* main report container            */
+      --radius-card: 4px;   /* summary cards, content panels, filters */
+      --radius-row: 3px;    /* findings accordion groups         */
+      --shadow: 0 1px 2px rgba(16,33,51,0.05), 0 2px 6px rgba(16,33,51,0.05);
+      --shadow-card: 0 1px 3px rgba(16,33,51,0.06), 0 8px 28px rgba(16,33,51,0.08);
+      --max-width: 1120px;
       --gap: 16px;
+    }
+
+    /* Automatic dark mode — follows the viewer's system setting. Only the
+       tokens flip; every component reads them, so nothing else changes. */
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --color-bg: #0e1922;
+        --color-surface: #16222e;
+        --color-surface-2: #1c2b38;
+        --color-text: #e6edf3;
+        --color-text-muted: #9db0c0;
+        --color-border: #2a3a48;
+        --color-border-strong: #3c4d5d;
+        --color-accent: #7fb2e3;
+        --color-accent-bg: #16303f;
+
+        --severity-critical: #ffa79f;
+        --severity-serious:  #f2b183;
+        --severity-moderate: #e4c352;
+        --severity-minor:    #8fc7e2;
+        --severity-pass:     #82d3a0;
+
+        --severity-critical-bg: #38201d;
+        --severity-serious-bg:  #33271a;
+        --severity-moderate-bg: #32301a;
+        --severity-minor-bg:    #13303c;
+        --severity-pass-bg:     #163127;
+
+        --shadow: 0 1px 2px rgba(0,0,0,0.4), 0 2px 8px rgba(0,0,0,0.35);
+        --shadow-card: 0 1px 3px rgba(0,0,0,0.5), 0 10px 30px rgba(0,0,0,0.45);
+      }
     }
     html { scrollbar-gutter: stable; }
     body {
       margin: 0;
-      padding: 16px;
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      padding: 0 0 8px;
+      font-family: var(--font-sans);
       font-size: 16px;
       line-height: 1.5;
       color: var(--color-text);
       background: var(--color-bg);
+      -webkit-font-smoothing: antialiased;
     }
     a { color: var(--color-accent); }
     /* File paths and URLs are long, space-free strings; let them wrap so they
@@ -57,12 +102,12 @@
     }
     .skip-link {
       position: absolute; left: -9999px; top: 0;
-      background: var(--color-accent); color: #fff;
+      background: var(--brand-primary); color: #fff;
       padding: 8px 12px; z-index: 1000; text-decoration: none;
     }
     .skip-link:focus { left: 8px; top: 8px; }
 
-    /* Layout shell — a centered white card on the gray page background,
+    /* Layout shell - a centered white card on the gray page background,
        mirroring the lint report's .container so the two reports match. */
     .page {
       max-width: var(--max-width);
@@ -74,23 +119,21 @@
     }
     @media (min-width: 768px) { .page { padding: 32px; } }
 
-    /* Surface tag banner */
+    /* Surface tag banner — pill sitting on the navy masthead */
     .surface-banner {
-      display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
-      background: var(--color-accent-bg); color: var(--color-accent);
-      padding: 8px 12px; border-radius: var(--radius);
-      font-size: 0.875rem; margin-bottom: var(--gap);
-      border: 1px solid #c9dcf2;
+      display: inline-flex; flex-wrap: wrap; gap: 8px; align-items: center;
+      background: rgba(255,255,255,0.12); color: #fff;
+      padding: 6px 14px; border-radius: 5px;
+      font-size: 0.8125rem; margin: 0 0 4px;
+      border: 1px solid rgba(255,255,255,0.22);
     }
-    .surface-banner strong { font-weight: 600; }
+    .surface-banner strong { font-weight: 700; color: var(--brand-accent); }
     .surface-banner .surface-url {
-      font-family: ui-monospace, "SF Mono", Menlo, monospace;
-      font-size: 0.8125rem;
+      font-family: var(--font-mono);
+      font-size: 0.78rem; color: #fff; opacity: 0.92;
       overflow-wrap: anywhere;
     }
-    .surface-banner .surface-sep {
-      color: var(--color-accent); opacity: 0.5;
-    }
+    .surface-banner .surface-sep { display: none; }
 
     /* Header */
     .report-header { margin-bottom: 24px; }
@@ -107,7 +150,7 @@
       background: var(--color-surface);
       border: 1px solid var(--color-border);
       border-left: 4px solid var(--color-accent);
-      border-radius: var(--radius);
+      border-radius: var(--radius-card);
       color: var(--color-text);
     }
     .findings-empty p { margin: 0; }
@@ -115,11 +158,11 @@
 
     /* Filters */
     .filters {
-      margin-top: 12px;
+      margin: 0 0 20px;
       padding: 12px 16px;
-      background: var(--color-surface);
+      background: var(--color-surface-2);
       border: 1px solid var(--color-border);
-      border-radius: var(--radius);
+      border-radius: var(--radius-card);
       display: flex; flex-direction: column; gap: 8px;
       align-items: stretch;
     }
@@ -133,7 +176,7 @@
     }
     .chip {
       font: inherit; cursor: pointer; user-select: none;
-      padding: 4px 12px; border-radius: 14px;
+      padding: 4px 12px; border-radius: 4px;
       font-size: 0.8125rem; font-weight: 500;
       border: 1px solid var(--color-border-strong);
       background: var(--color-surface);
@@ -142,9 +185,9 @@
     }
     .chip:hover { border-color: var(--color-accent); color: var(--color-accent); }
     .chip[aria-pressed="true"] {
-      background: var(--color-accent-bg);
-      color: var(--color-accent);
-      border-color: var(--color-accent);
+      background: var(--brand-primary);
+      color: #fff;
+      border-color: var(--brand-primary);
     }
     .chip[disabled] {
       cursor: default; opacity: 1;
@@ -158,7 +201,7 @@
     }
     .chip-reset {
       font: inherit; cursor: pointer;
-      padding: 4px 12px; border-radius: 14px;
+      padding: 4px 12px; border-radius: 4px;
       font-size: 0.8125rem; font-weight: 500;
       background: transparent; border: 1px solid transparent;
       color: var(--color-text-muted); text-decoration: underline;
@@ -171,15 +214,16 @@
 
     /* Section */
     section { margin: 32px 0; }
+    #main > section:first-child { margin-top: 4px; }
     section > h2 {
       font-size: 1.125rem; margin: 0 0 16px;
     }
 
-    /* At a glance — severity tiles */
+    /* At a glance - severity tiles */
     .glance-card {
       background: var(--color-surface);
       border: 1px solid var(--color-border);
-      border-radius: var(--radius);
+      border-radius: var(--radius-card);
       padding: 24px;
       box-shadow: var(--shadow);
     }
@@ -188,7 +232,7 @@
       grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
     }
     .tile {
-      padding: 16px; border-radius: var(--radius); border: 1px solid currentColor;
+      padding: 16px; border-radius: var(--radius-card); border: 1px solid currentColor;
       background: var(--tile-bg, transparent); color: var(--tile-fg, inherit);
       text-align: center;
     }
@@ -204,9 +248,9 @@
     }
     .threshold-note strong { color: var(--color-text); font-weight: 600; }
 
-    /* Clean-run panel — replaces severity tiles when nothing was found. */
+    /* Clean-run panel - replaces severity tiles when nothing was found. */
     .clean-run {
-      padding: 24px; border-radius: var(--radius);
+      padding: 24px; border-radius: var(--radius-card);
       background: var(--severity-pass-bg); border: 1px solid var(--severity-pass);
       color: var(--color-text);
     }
@@ -225,21 +269,22 @@
       color: var(--color-text-muted); font-size: 0.875rem;
     }
 
-
-
-    /* Why this matters */
-    .why-card {
-      background: var(--color-surface); border: 1px solid var(--color-border);
-      border-radius: var(--radius); padding: 16px 20px; box-shadow: var(--shadow);
-      font-size: 0.95rem; line-height: 1.6;
+    /* Incomplete-run notice - a lane ran but did not verify everything. */
+    .incomplete-banner, .incomplete-run {
+      padding: 16px 20px; border-radius: var(--radius-card);
+      background: var(--severity-moderate-bg); border: 1px solid var(--severity-moderate);
+      color: var(--color-text); font-size: 0.9375rem; line-height: 1.5;
     }
-    .why-card p { margin: 0 0 8px; }
-    .why-card p:last-child { margin-bottom: 0; }
+    .incomplete-banner { margin: 0 0 16px; }
+    .incomplete-banner strong { color: var(--severity-moderate); }
+    .incomplete-run { padding: 24px; }
+    .incomplete-run h3 { margin: 0 0 6px; font-size: 1.125rem; color: var(--severity-moderate); }
+    .incomplete-run p { margin: 4px 0; font-size: 0.9375rem; }
 
-    /* Findings — impact category groups */
+    /* Findings - impact category groups */
     .impact-group {
       background: var(--color-surface); border: 1px solid var(--color-border);
-      border-radius: var(--radius); margin-bottom: 16px; box-shadow: var(--shadow);
+      border-radius: var(--radius-row); margin-bottom: 16px; box-shadow: var(--shadow);
       overflow: hidden;
     }
     .impact-group > summary {
@@ -260,7 +305,7 @@
     .impact-group[open] > summary::before { transform: rotate(90deg); }
     .impact-group .impact-count {
       margin-left: auto; padding: 2px 10px;
-      background: var(--color-bg); border-radius: 12px;
+      background: var(--color-bg); border-radius: 3px;
       font-size: 0.875rem; font-weight: 600; color: var(--color-text-muted);
     }
 
@@ -290,7 +335,7 @@
 
     .severity-badge {
       display: inline-flex; align-items: center; gap: 4px;
-      flex-shrink: 0; padding: 2px 10px; border-radius: 12px;
+      flex-shrink: 0; padding: 2px 10px; border-radius: 3px;
       font-size: 0.75rem; font-weight: 700; text-transform: uppercase;
       letter-spacing: 0.02em;
     }
@@ -302,7 +347,7 @@
     .finding-body { padding: 0 20px 16px 32px; font-size: 0.9375rem; }
     .finding-body .fix {
       background: var(--severity-pass-bg); padding: 12px 14px;
-      border-radius: 6px; margin: 8px 0;
+      border-radius: 4px; margin: 8px 0;
       border-left: 4px solid var(--severity-pass);
     }
     .finding-body .fix strong { color: var(--severity-pass); }
@@ -341,7 +386,7 @@
     /* Maintainer details (hidden by default) */
     .tech-detail {
       margin-top: 8px; padding: 12px 14px;
-      background: var(--color-bg); border-radius: 6px;
+      background: var(--color-bg); border-radius: 4px;
       font-size: 0.8125rem; color: var(--color-text-muted);
       font-family: ui-monospace, "SF Mono", Menlo, monospace;
     }
@@ -354,23 +399,100 @@
     /* Empty / pass states */
     .empty-state {
       padding: 24px; background: var(--color-surface);
-      border: 1px solid var(--color-border); border-radius: var(--radius);
+      border: 1px solid var(--color-border); border-radius: var(--radius-card);
       text-align: center; color: var(--color-text-muted);
     }
 
-    /* About */
+    /* About - flat section, no card treatment. Subsections separated by
+       spacing + heading hierarchy rather than a nested box. */
     .about-card {
+      font-size: 0.9375rem; color: var(--color-text); line-height: 1.6;
       background: var(--color-surface); border: 1px solid var(--color-border);
-      border-radius: var(--radius); padding: 16px 20px; box-shadow: var(--shadow);
-      font-size: 0.875rem; color: var(--color-text-muted); line-height: 1.6;
+      border-radius: var(--radius-card); padding: 24px; box-shadow: var(--shadow);
     }
-    .about-card h3 { margin: 16px 0 6px; color: var(--color-text); font-size: 0.9375rem; }
-    .about-card h3:first-child { margin-top: 0; }
-    .about-card ul { margin: 4px 0 8px; padding-left: 20px; }
-    .about-card .raw-reports a { display: inline-block; margin-right: 12px; }
-    .about-card .machine-readable { list-style: none; padding: 0; margin: 4px 0 8px; }
-    .about-card .machine-readable li { padding: 4px 0; font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 0.8125rem; }
-    .about-card .machine-readable .size { color: var(--color-text-muted); margin-left: 8px; font-size: 0.75rem; }
+    .about-card h3 {
+      margin: 30px 0 8px; color: var(--color-text);
+      font-size: 1rem; font-weight: 700; letter-spacing: -0.01em;
+    }
+    .about-card h3:first-child { margin-top: 4px; }
+    .about-card p { margin: 0 0 12px; max-width: none; }
+    .about-card p:last-child { margin-bottom: 0; }
+    .about-card ul { margin: 4px 0 12px; padding-left: 20px; max-width: none; }
+    .about-card ul li { margin: 2px 0; }
+
+    /* Report links - restrained rectangular controls, wrap freely */
+    .raw-reports {
+      list-style: none; display: flex; flex-wrap: wrap;
+      gap: 8px; margin: 8px 0 4px; padding: 0;
+    }
+    .raw-reports a {
+      display: inline-flex; align-items: center; min-height: 44px;
+      box-sizing: border-box; padding: 9px 14px; border-radius: 4px;
+      border: 1px solid var(--color-border);
+      background: var(--color-surface);
+      color: var(--color-accent);
+      text-decoration: none; font-size: 0.875rem; font-weight: 500;
+    }
+    .raw-reports a:hover {
+      border-color: var(--color-accent); background: var(--color-accent-bg);
+    }
+
+    /* Disclosure controls (native button + panel) */
+    .disclosure-toggle {
+      display: inline-flex; align-items: center; gap: 8px;
+      min-height: 44px; box-sizing: border-box;
+      padding: 9px 14px; margin: 4px 0 0;
+      border: 1px solid var(--color-border); border-radius: 4px;
+      background: var(--color-surface); color: var(--color-accent);
+      font: inherit; font-size: 0.875rem; font-weight: 500; cursor: pointer;
+    }
+    .disclosure-toggle:hover {
+      border-color: var(--color-accent); background: var(--color-accent-bg);
+    }
+    .disclosure-toggle .chevron {
+      width: 14px; height: 14px; flex: none;
+      transition: transform 0.15s ease;
+    }
+    .disclosure-toggle[aria-expanded="true"] .chevron { transform: rotate(90deg); }
+    .disclosure-panel { margin: 12px 0 4px; }
+    .disclosure-panel[hidden] { display: none; }
+
+    .disclosure-toggle:focus-visible,
+    .raw-reports a:focus-visible,
+    .report-run-details a:focus-visible {
+      outline: 2px solid var(--color-accent); outline-offset: 2px;
+    }
+
+    .about-card .machine-readable { list-style: none; padding: 0; margin: 0; }
+    .about-card .machine-readable li {
+      display: flex; flex-wrap: wrap; align-items: baseline;
+      gap: 4px 10px; padding: 5px 0;
+    }
+    .about-card .machine-readable a {
+      font-family: var(--font-mono); font-size: 0.8125rem;
+      color: var(--color-accent); overflow-wrap: anywhere;
+    }
+    .about-card .machine-readable .size {
+      color: var(--color-text-muted); font-size: 0.75rem;
+    }
+    .about-card .schema-line {
+      margin: 12px 0 0; font-size: 0.8125rem; color: var(--color-text-muted);
+    }
+    .about-card .schema-line code {
+      font-family: var(--font-mono); overflow-wrap: anywhere;
+    }
+
+    /* Run details - compact definition list */
+    .report-run-details {
+      display: flex; flex-wrap: wrap; gap: 8px 28px; margin: 8px 0 0;
+    }
+    .report-run-details > div { display: flex; gap: 6px; align-items: baseline; }
+    .report-run-details dt { margin: 0; color: var(--color-text-muted); font-weight: 500; }
+    .report-run-details dt::after { content: ":"; }
+    .report-run-details dd { margin: 0; font-weight: 600; overflow-wrap: anywhere; }
+    @media (max-width: 560px) {
+      .report-run-details { flex-direction: column; gap: 6px; }
+    }
 
     /* Visually hidden but available to screen readers (filter announcements) */
     .sr-only {
@@ -379,7 +501,7 @@
       clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
     }
 
-    /* Honor reduced-motion preference — disable transitions/animations. */
+    /* Honor reduced-motion preference - disable transitions/animations. */
     @media (prefers-reduced-motion: reduce) {
       *, *::before, *::after {
         transition-duration: 0.01ms !important;
@@ -396,15 +518,76 @@
       details:not([open]) > * { display: none; }
       details > summary { list-style: none; }
     }
+
+    /* ===================================================================
+       Website chrome + polish. Brand-agnostic layout; recolor via the
+       BRAND TOKENS block at the top of :root.
+       =================================================================== */
+
+    /* Full-bleed navy masthead */
+    .site-masthead {
+      background: var(--brand-primary);
+      color: var(--brand-primary-ink);
+      padding: 30px 20px 56px;
+    }
+    .masthead-inner {
+      width: min(100% - 32px, var(--max-width));
+      margin-inline: auto;
+    }
+    .site-masthead h1 {
+      margin: 12px 0 6px;
+      font-size: clamp(1.5rem, 1rem + 2.2vw, 2.1rem);
+      line-height: 1.15; font-weight: 750;
+      letter-spacing: -0.015em; color: #fff;
+      text-wrap: balance;
+    }
+    .site-masthead .meta { margin: 0; color: rgba(255,255,255,0.72); font-size: 0.875rem; }
+    .site-masthead a { color: var(--brand-accent); }
+
+    /* White card pulled up to overlap the masthead (layered site feel) */
+    .page {
+      width: min(100% - 32px, var(--max-width));
+      max-width: none;
+      margin: -32px auto 0;
+      position: relative; z-index: 1;
+    }
+
+    /* Section headings get a small gold diamond marker */
+    section > h2 {
+      font-size: 1.15rem; font-weight: 700;
+      color: var(--color-text); letter-spacing: -0.01em;
+    }
+
+    /* Generic footer (no brand marks) */
+    .site-footer {
+      width: min(100% - 32px, var(--max-width));
+      margin: 44px auto 40px; padding-top: 18px;
+      border-top: 1px solid var(--color-border);
+      color: var(--color-text-muted);
+      font-size: 0.8125rem; line-height: 1.5;
+      display: flex; justify-content: space-between;
+      gap: 8px 24px; flex-wrap: wrap;
+    }
+    .site-footer .footer-note { opacity: 0.85; }
+
+    /* Print: flatten the masthead, unstick the filter bar */
+    @media print {
+      .site-topbar { display: none; }
+      .site-masthead { background: #fff; color: #000; padding: 0 0 8px; }
+      .site-masthead h1 { color: #000; }
+      .site-masthead .meta { color: #333; }
+      .surface-banner { background: #fff !important; color: #000 !important; border-color: #ccc !important; }
+      .surface-banner strong, .surface-banner .surface-url { color: #000 !important; }
+      .page { margin-top: 12px; box-shadow: none; }
+      .filters { position: static !important; box-shadow: none !important; }
+      .site-footer { display: none; }
+    }
   </style>
 </head>
 <body class="">
   <a href="#main" class="skip-link">Skip to results</a>
-  <div class="page">
-
-    <header class="report-header">
-      <!-- Surface tag banner — inside <header> so its content lives under
-           the banner landmark instead of floating outside any landmark. -->
+  <header class="site-masthead">
+    <div class="masthead-inner">
       <div class="surface-banner" id="surface-banner" role="status">
         <strong id="surface-label">Local</strong>
         <span class="surface-url" id="surface-url"></span>
@@ -415,11 +598,9 @@
       <div class="meta">
         <span id="generated-at">—</span>
       </div>
-      <div class="filters" id="filters" role="group" aria-label="Filter findings">
-        <!-- hydrated by JS; chips show only standards/severities present in data -->
-      </div>
-      <div id="filter-announce" class="sr-only" role="status" aria-live="polite"></div>
-    </header>
+    </div>
+  </header>
+  <div class="page">
 
     <main id="main">
 
@@ -427,65 +608,57 @@
       <section aria-labelledby="at-a-glance">
         <h2 id="at-a-glance">At a glance</h2>
         <div class="glance-card" id="glance-card">
-          <div class="severity-tiles" id="severity-tiles" role="group" aria-label="Findings by severity">
-            <!-- hydrated by JS -->
-          </div>
-          <p class="threshold-note" id="threshold-note" hidden></p>
+          <div class="severity-tiles" id="severity-tiles" role="group" aria-label="Findings by severity"></div>
+          <p class="threshold-note" id="threshold-note" hidden=""></p>
         </div>
       </section>
 
-      <!-- Why this matters -->
-      <section aria-labelledby="why-this-matters">
-        <h2 id="why-this-matters">Why this matters</h2>
-        <div class="why-card">
-          <p>
-            This report shows what automated tests flagged in the custom themes,
-            modules, and profiles shipped with this site. <strong>Automated tests
-            catch only 30–40% of real accessibility issues</strong> — manual
-            testing with screen readers, keyboard-only navigation, and disabled
-            users is still required for full confidence.
-          </p>
-          <p>
-            Treat this report as a shared checkpoint, not a scoreboard. Issues
-            grouped by user impact tell you who is affected and why; severity
-            tells you how soon to address it. Each issue includes the rule ID,
-            file path or selector, and tool-native message for direct triage.
-          </p>
-        </div>
-      </section>
+      <div class="filters" id="filters" role="group" aria-label="Filter findings"></div>
+      <div id="filter-announce" class="sr-only" role="status" aria-live="polite"></div>
 
       <!-- Findings -->
       <section aria-labelledby="issues">
         <h2 id="issues">Findings</h2>
-        <div id="findings-empty" class="findings-empty" hidden>
+        <div id="findings-empty" class="findings-empty" hidden="">
           <p><strong>No findings match the current filters.</strong></p>
-          <p>Filters narrow results — try removing one. Rules, Impact, and Severity combine with AND.</p>
+          <p>Filters narrow results. Try removing one. Rules, Impact, and Severity combine with AND.</p>
         </div>
-        <div id="findings-by-impact">
-          <!-- hydrated by JS -->
-        </div>
+        <div id="findings-by-impact"></div>
       </section>
 
       <!-- About this report -->
       <section aria-labelledby="about-this-report">
         <h2 id="about-this-report">About this report</h2>
         <div class="about-card">
-          <h3>Detailed reports per tool</h3>
-          <p class="raw-reports" id="raw-reports">—</p>
-          <h3>Machine-readable output</h3>
-          <p class="hint" style="margin: 4px 0 8px">JSON artifacts for downstream automation (CI gates, accessibility agents, dashboards). Schema documented at <code>tests/reports/_shell/findings.schema.json</code>.</p>
-          <ul class="machine-readable" id="machine-readable" aria-label="Findings JSON files">
-            <li>—</li>
-          </ul>
-          <h3>What automated tests do not cover</h3>
+          <h3>Why this matters</h3>
+          <p>This report summarizes what automated tests flagged on rendered site pages and in the custom themes, modules, and profiles shipped with the site. <strong>Automated testing provides only partial accessibility coverage</strong>, so manual testing with screen readers, keyboard-only navigation, and people with disabilities is still necessary.</p>
+          <p>Treat this report as a shared checkpoint, not a scoreboard. Findings are grouped by user impact to show who may be affected, and by severity to support prioritization. Each finding includes technical details such as the rule ID, file path or selector, and the original tool message for remediation.</p>
+
+          <h3>Detailed reports</h3>
+          <ul class="raw-reports" id="raw-reports"></ul>
+
+          <h3>Machine-readable results</h3>
+          <p>JSON output is available for CI integrations, dashboards, accessibility agents, and other automation.</p>
+          <button type="button" class="disclosure-toggle" id="mr-toggle" aria-expanded="false" aria-controls="mr-panel">
+            <svg class="chevron" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M6 3.5L10.5 8L6 12.5" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+            View individual JSON files
+          </button>
+          <div class="disclosure-panel" id="mr-panel" hidden="">
+            <ul class="machine-readable" id="machine-readable" aria-label="Findings JSON files"></ul>
+            <p class="schema-line">Schema: <code>tests/reports/_shell/findings.schema.json</code></p>
+          </div>
+
+          <h3>Testing limitations</h3>
+          <p>Automated testing cannot fully evaluate screen-reader behavior, keyboard workflows, cognitive accessibility, content clarity, or real user experiences.</p>
           <ul>
-            <li>Screen-reader-specific behavior (NVDA, JAWS, VoiceOver) — needs manual testing.</li>
+            <li>Screen-reader-specific behavior (NVDA, JAWS, VoiceOver) needs manual testing.</li>
             <li>Keyboard navigation flow and focus order across complex widgets.</li>
-            <li>Cognitive load, content readability, language clarity.</li>
+            <li>Cognitive load, content readability, and language clarity.</li>
             <li>Real users with disabilities encountering real workflows.</li>
           </ul>
+
           <h3>Run details</h3>
-          <p id="run-details">—</p>
+          <dl class="report-run-details" id="run-details"></dl>
         </div>
       </section>
 
@@ -537,7 +710,7 @@
       };
 
       // Standard chip ordering: WCAG 2.0 levels, then 2.1, then 2.2, then
-      // best-practice / Section 508 / unknown. Each tag is its own chip —
+      // best-practice / Section 508 / unknown. Each tag is its own chip -
       // verbose labels read more clearly to non-specialists than collapsed
       // "A / AA" letters. The Rules row is WCAG-only; non-a11y tags
       // (code-quality / uncategorized) are filtered via the Impact row.
@@ -661,7 +834,7 @@
         return;
       }
 
-      // Surface banner — context (Local / CI / CI · multidev), the actual
+      // Surface banner - context (Local / CI / CI · multidev), the actual
       // base URL of the site under test, and any extra label (branch
       // name, multidev name).
       var sb = data.surface || { context: "local" };
@@ -671,7 +844,7 @@
       document.getElementById("surface-url").textContent = siteUrl;
       document.getElementById("surface-detail").textContent = sb.label ? "(" + sb.label + ")" : "";
 
-      // Header meta — just the generated timestamp. Profile + tags are already
+      // Header meta - just the generated timestamp. Profile + tags are already
       // visible in the chip strip below, so duplicating them here is redundant.
       document.getElementById("generated-at").textContent = data.generated_at ? "Generated " + new Date(data.generated_at).toLocaleString() : "";
 
@@ -683,6 +856,24 @@
       });
       var tilesEl = document.getElementById("severity-tiles");
       var anyFindings = SEVERITY_ORDER.some(function (s) { return totals[s] > 0; });
+
+      // Lanes whose summary.status is "incomplete" verified less than they
+      // targeted (0 pages crawled, or pages errored mid-run). Surface that
+      // loudly so an incomplete run is never mistaken for a clean pass.
+      var incompleteTests = data.tests.filter(function (t) {
+        return t.summary && t.summary.status === "incomplete";
+      });
+      function incompleteDetail(t) {
+        var s = t.summary || {};
+        if (s.pages_errored) {
+          return t.test + " (" + s.pages_errored + " of " +
+            (s.pages_tested || "?") + " pages errored)";
+        }
+        if (s.pages_tested === 0) return t.test + " (0 pages tested)";
+        return t.test;
+      }
+      var incompleteListText = incompleteTests.map(incompleteDetail).join("; ");
+
       if (anyFindings) {
         var tilesHtml = "";
         SEVERITY_ORDER.forEach(function (s) {
@@ -693,8 +884,28 @@
             '</div>';
         });
         tilesEl.innerHTML = tilesHtml;
+        if (incompleteTests.length) {
+          tilesEl.insertAdjacentHTML("beforebegin",
+            '<div class="incomplete-banner" role="alert">' +
+              '<strong>Run incomplete:</strong> ' + escapeHtml(incompleteListText) +
+              '. Counts below may understate the true findings; re-run the incomplete lane(s).' +
+            '</div>');
+        }
+      } else if (incompleteTests.length) {
+        // No findings, but at least one lane is incomplete - this is NOT a
+        // clean pass, so never show the celebration panel here.
+        var whyIncomplete = document.querySelector('section[aria-labelledby="why-this-matters"]');
+        if (whyIncomplete) whyIncomplete.setAttribute("hidden", "");
+        var issuesIncomplete = document.querySelector('section[aria-labelledby="issues"]');
+        if (issuesIncomplete) issuesIncomplete.setAttribute("hidden", "");
+        document.getElementById("glance-card").outerHTML =
+          '<div class="incomplete-run" role="alert">' +
+            '<h3>Run incomplete: no findings, but not a pass</h3>' +
+            '<p>' + escapeHtml(incompleteListText) + '.</p>' +
+            '<p>These lanes did not verify everything they targeted. Re-run them before treating this result as clean.</p>' +
+          '</div>';
       } else {
-        // Clean run — replace tiles with a celebratory panel that reports the
+        // Clean run - replace tiles with a celebratory panel that reports the
         // scope of what was checked and reminds users what automation misses.
         // "Why this matters" and Issues sections are hidden (redundant on a
         // clean run); the filter strip stays so users can still see *what was
@@ -720,11 +931,11 @@
         var glanceCard = document.getElementById("glance-card");
         glanceCard.outerHTML =
           '<div class="clean-run" role="status" aria-live="polite">' +
-            '<h3>Clean run — no findings detected</h3>' +
+            '<h3>Clean run: no findings detected</h3>' +
             '<p class="clean-counts">' + testCount + ' test' + (testCount === 1 ? '' : 's') +
               ' passed across ' + escapeHtml(scopeText) + '.</p>' +
-            '<p class="clean-reminder"><strong>Reminder:</strong> automated tests catch only 30–40% of accessibility issues. ' +
-              'Manual testing with screen readers, keyboard-only navigation, and disabled users is still recommended.</p>' +
+            '<p class="clean-reminder"><strong>Reminder:</strong> automated testing provides only partial accessibility coverage. ' +
+              'Manual testing with screen readers, keyboard-only navigation, and people with disabilities is still recommended.</p>' +
           '</div>';
       }
 
@@ -738,7 +949,7 @@
       var thresholdLevels = SEVERITY_ORDER.filter(function (s) { return thresholdSet[s]; });
       var thresholdEl = document.getElementById("threshold-note");
       // thresholdEl is removed when the clean-run panel replaces the glance-card.
-      if (thresholdEl && thresholdLevels.length && thresholdLevels.length < SEVERITY_ORDER.length) {
+      if (thresholdEl && thresholdLevels.length) {
         var blocking = thresholdLevels.map(function (s) { return SEVERITY_META[s].label; }).join(", ");
         var advisoryLevels = SEVERITY_ORDER.filter(function (s) { return !thresholdSet[s] && totals[s] > 0; });
         var advisory = advisoryLevels.map(function (s) { return SEVERITY_META[s].label; }).join(", ");
@@ -746,8 +957,6 @@
           (advisory ? ". " + escapeHtml(advisory) + " issues are advisory only." : ".");
         thresholdEl.removeAttribute("hidden");
       }
-
-
 
       // Findings grouped by impact
       var byImpact = {};
@@ -777,7 +986,7 @@
           items.sort(function (a, b) {
             return SEVERITY_ORDER.indexOf(a.finding.severity) - SEVERITY_ORDER.indexOf(b.finding.severity);
           });
-          // All impact groups start collapsed — reviewers click to drill in.
+          // All impact groups start collapsed - reviewers click to drill in.
           // Keeps the Issues section scannable when many categories surface.
           return '<details class="impact-group">' +
             '<summary><span>' + escapeHtml(meta.label) + '</span>' +
@@ -787,21 +996,29 @@
         }).join("");
       }
 
-      // Raw reports list
+      // Raw reports list. Visible label is shortened (parentheticals such as
+      // WCAG references and "full site" removed); the full tool title is kept
+      // as the accessible name + tooltip so nothing is lost.
+      function shortReportLabel(full) {
+        return String(full).replace(/\s*\([^)]*\)/g, "").replace(/\s+/g, " ").trim();
+      }
       var rawEl = document.getElementById("raw-reports");
       var rawLinks = data.raw_reports || [];
       if (rawLinks.length === 0) {
-        rawEl.textContent = "No raw reports available.";
+        rawEl.innerHTML = '<li class="hint">No reports available.</li>';
       } else {
         rawEl.innerHTML = rawLinks.map(function (r) {
-          return '<a href="' + escapeAttr(r.href) + '">' + escapeHtml(r.label) + '</a>';
+          var shortLabel = shortReportLabel(r.label) || r.label;
+          return '<li><a href="' + escapeAttr(safeHref(r.href)) + '" title="' + escapeAttr(r.label) +
+            '" aria-label="' + escapeAttr(r.label) + '">' + escapeHtml(shortLabel) + '</a></li>';
         }).join("");
       }
 
       // Machine-readable artifacts (test-suite-findings.json per test).
       // Renders the canonical full-coverage JSON files for downstream
       // automation. Key-pages variants (axe / alfa) intentionally don't
-      // emit test-suite-findings.json — see DOWNSTREAM_USAGE.md.
+      // emit test-suite-findings.json; only full-coverage lanes do (see
+      // findings.schema.json for the contract).
       var mrEl = document.getElementById("machine-readable");
       var mrItems = data.machine_readable || [];
       if (mrItems.length === 0) {
@@ -811,18 +1028,40 @@
           var size = m.size_kb != null
             ? '<span class="size">' + escapeHtml(formatSize(m.size_kb)) + '</span>'
             : '';
-          return '<li><a href="' + escapeAttr(m.href) + '">' + escapeHtml(m.label) + '</a>' + size + '</li>';
+          return '<li><a href="' + escapeAttr(safeHref(m.href)) + '">' + escapeHtml(m.label) + '</a>' + size + '</li>';
         }).join("");
       }
 
-      // Run details (plain text, no jargon)
-      var rd = [];
-      if (sb.base_url) rd.push("Site tested: " + sb.base_url);
+      // Run details as a compact definition list. Site URL is a real link.
+      var rdEl = document.getElementById("run-details");
+      var rdRows = [];
+      if (/^https?:/i.test(sb.base_url || "")) {
+        var host = String(sb.base_url).replace(/^https?:\/\//, "").replace(/\/$/, "");
+        rdRows.push('<div><dt>Site tested</dt><dd><a href="' + escapeAttr(sb.base_url) +
+          '">' + escapeHtml(host) + '</a></dd></div>');
+      }
       var pages = (data.tests.find(function (t) { return t.summary && t.summary.pages_tested; }) || {}).summary;
-      if (pages && pages.pages_tested) rd.push("Pages tested: " + pages.pages_tested);
+      if (pages && pages.pages_tested) {
+        rdRows.push('<div><dt>Pages tested</dt><dd>' + escapeHtml(String(pages.pages_tested)) + '</dd></div>');
+      }
       var files = (data.tests.find(function (t) { return t.summary && t.summary.files_scanned; }) || {}).summary;
-      if (files && files.files_scanned) rd.push("Files scanned: " + files.files_scanned);
-      document.getElementById("run-details").textContent = rd.join(" · ") || "—";
+      if (files && files.files_scanned) {
+        rdRows.push('<div><dt>Files scanned</dt><dd>' + escapeHtml(Number(files.files_scanned).toLocaleString("en-US")) + '</dd></div>');
+      }
+      rdEl.innerHTML = rdRows.join("") || '<div><dd>\u2014</dd></div>';
+
+      // Disclosure controls (native <button> + aria-expanded/aria-controls).
+      Array.prototype.forEach.call(document.querySelectorAll(".disclosure-toggle"), function (btn) {
+        btn.addEventListener("click", function () {
+          var panel = document.getElementById(btn.getAttribute("aria-controls"));
+          var isOpen = btn.getAttribute("aria-expanded") === "true";
+          btn.setAttribute("aria-expanded", String(!isOpen));
+          if (panel) {
+            if (isOpen) panel.setAttribute("hidden", "");
+            else panel.removeAttribute("hidden");
+          }
+        });
+      });
 
       // Filters: standards + severity, click chip to toggle visibility.
       // Standards aggregate from BOTH the test's profile.tags (what was tested)
@@ -860,7 +1099,7 @@
       // Always render every severity chip (Critical / Serious / Moderate /
       // Minor) when there are findings, so the filter row's shape stays
       // predictable across runs. Clicking a chip whose level produced no
-      // findings yields a visible empty result — informative rather than
+      // findings yields a visible empty result - informative rather than
       // hidden.
       var sevKeys = SEVERITY_ORDER.slice();
       // Impact row: only render chips for impacts that actually have
@@ -958,7 +1197,7 @@
         });
 
         // Announce the new total to screen readers when filters change.
-        // Filters AND together — when the intersection is empty, hint that
+        // Filters AND together - when the intersection is empty, hint that
         // the user can broaden by removing a chip.
         var activeAxes = (hasActiveStd ? 1 : 0) + (hasActiveImpact ? 1 : 0) + (hasActiveSev ? 1 : 0);
         var announceEl = document.getElementById("filter-announce");
@@ -966,13 +1205,13 @@
           var msg;
           if (activeAxes === 0) msg = "Filters cleared. Showing all " + totalVisible + " findings.";
           else if (totalVisible === 0) {
-            msg = "No findings match the current filters. Filters narrow results — try removing one"
+            msg = "No findings match the current filters. Filters narrow results. Try removing one"
               + (activeAxes > 1 ? " (Rules, Impact, and Severity combine with AND)." : ".");
           }
           else msg = "Showing " + totalVisible + " issue" + (totalVisible === 1 ? "" : "s") + " matching the current filters.";
           announceEl.textContent = msg;
         }
-        // Visible inline empty state for sighted users — only shows when
+        // Visible inline empty state for sighted users - only shows when
         // filters are active AND nothing matches.
         var emptyEl = document.getElementById("findings-empty");
         if (emptyEl) {
@@ -1014,7 +1253,7 @@
           ' data-standards="' + escapeAttr(standards.join(" ")) + '"' +
           ' data-impact="' + escapeAttr(impactCat) + '"';
 
-        // Module / theme / profile attribution — visible by default so users see
+        // Module / theme / profile attribution - visible by default so users see
         // immediately whether the finding is in their custom code.
         var attribution = renderAttribution(f.locations || []);
         var whereBlock = renderWhere(f.locations || []);
@@ -1023,11 +1262,11 @@
         // tell reviewers which underlying linter (phpcs, phpstan, eslint, cspell,
         // composer, markdownlint, actionlint, etc.) produced the finding. The
         // emitter encodes the tool as the second segment of `id` ("lint:<tool>:<rule>"),
-        // so we surface it inline as "Code quality (lint) — <tool>".
+        // so we surface it inline as "Code quality (lint): <tool>".
         var foundByLabel = (TEST_LABELS[item.test] && TEST_LABELS[item.test].name) || item.test;
         if (item.test === "lint" && typeof f.id === "string" && f.id.indexOf("lint:") === 0) {
           var lintTool = f.id.split(":")[1] || "";
-          if (lintTool) foundByLabel += " — " + lintTool;
+          if (lintTool) foundByLabel += ": " + lintTool;
         }
 
         // Condensed rule/standard label (the same standards shown as "Rules"
@@ -1039,7 +1278,7 @@
         // render Rules on its own line so the mapping is still visible.
         var ruleIdLine = f.rule_id
           ? '<div><span class="label">Rule ID</span> <code>' + escapeHtml(f.rule_id) + '</code>' +
-              (f.rule_url ? ' · <a href="' + escapeAttr(f.rule_url) + '">spec</a>' : '') +
+              (/^https?:/i.test(f.rule_url || "") ? ' · <a href="' + escapeAttr(f.rule_url) + '">spec</a>' : '') +
               (rulesInline ? ' · <span class="label">Rules</span> ' + rulesInline : '') +
             '</div>'
           : (rulesInline ? '<div><span class="label">Rules</span> ' + rulesInline + '</div>' : '');
@@ -1121,14 +1360,14 @@
         // URL-kind locations (reflow, page-scoped a11y findings) carry the
         // page URL, not a file path. Render them as a link so reviewers can
         // jump to the failing page from the report.
-        if (loc.kind === "url" && loc.url) {
+        if (loc.kind === "url" && /^https?:/i.test(loc.url || "")) {
           var occ = loc.occurrences && loc.occurrences > 1 ? " (×" + loc.occurrences + ")" : "";
           return '<li><a href="' + escapeAttr(loc.url) + '" target="_blank" rel="noopener"><code>'
             + escapeHtml(loc.url) + '</code></a>' + escapeHtml(occ) + '</li>';
         }
-        var label = loc.path || "";
+        var label = loc.path || loc.url || "";
         if (loc.line) label += ":" + loc.line;
-        if (loc.selector) label += " — " + loc.selector;
+        if (loc.selector) label += " · " + loc.selector;
         if (loc.occurrences && loc.occurrences > 1) label += " (×" + loc.occurrences + ")";
         return '<li><code>' + escapeHtml(label) + '</code></li>';
       }
@@ -1138,7 +1377,7 @@
         // finding maps to. Union of (a) the test's profile.tags (the WCAG
         // levels the test was scoped to) and (b) any per-finding tags (e.g.
         // 'wai-aria', 'best-practice'). Lint and other non-a11y findings
-        // intentionally yield an empty set — they are filtered via the
+        // intentionally yield an empty set - they are filtered via the
         // Impact row, not the Rules row. Same KNOWN_STANDARDS allowlist as
         // the chip strip so stray non-standard tags don't bake into
         // data-standards.
@@ -1157,6 +1396,15 @@
         });
       }
       function escapeAttr(s) { return escapeHtml(s); }
+      // Allow http(s) and relative report paths in href; strip any other
+      // scheme (javascript:, data:) that entity-escaping alone would keep
+      // clickable. Mirrors the href rule in sanitizeHtml().
+      function safeHref(url) {
+        var u = String(url || "").trim();
+        if (/^https?:/i.test(u)) return u;
+        if (/^[a-z][a-z0-9+.-]*:/i.test(u)) return "";
+        return u;
+      }
 
       function formatSize(kb) {
         var n = Number(kb);
@@ -1168,5 +1416,5 @@
 
     })();
   </script>
-</body>
-</html>
+
+</body></html>

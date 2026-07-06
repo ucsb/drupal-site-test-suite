@@ -9,10 +9,10 @@ import { getAccessibilityConfig, getProfileInfo } from '../config/a11y-profiles.
 // @ts-ignore — JS module without types
 import { writeAxeFindings } from '../utils/findings-emitter.js';
 
-// Free axe-core full-site runner. Mirrors `a11y.spec.ts` (key pages) but
-// iterates the sitemap so coverage matches `alfa-full` / `pa11y`. Uses the
+// Free axe-core full-site runner that
+// iterates the sitemap so coverage matches `alfa` / `pa11y`. Uses the
 // open-source axe-core engine via @axe-core/playwright — no API key, no
-// Deque Developer Hub dependency. The paid `axe-watcher-full` lane stays
+// Deque Developer Hub dependency. The paid `axe-watcher` lane stays
 // for sites that want the hosted dashboard / analytics layer.
 
 const BASE = process.env.BASE_URL || 'http://127.0.0.1:8888';
@@ -95,10 +95,12 @@ test.describe(`A11y (Playwright + axe full-site) - ${profileInfo.name}`, () => {
           timestamp: new Date().toISOString(),
         });
 
+        // Report-only lane (it never fails the test), so report counts, not
+        // PASS/FAIL, to avoid reading a finding as a gate failure.
         if (bad.length > 0) {
-          console.log(`   FAIL — ${bad.length} violation(s)`);
+          console.log(`   ${bad.length} violation(s) at configured severity (report-only)`);
         } else {
-          console.log(`   PASS — no violations at configured severity`);
+          console.log(`   no violations at configured severity`);
         }
       } catch (err) {
         const msg = (err as Error).message;

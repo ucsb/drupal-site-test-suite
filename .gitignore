@@ -14,6 +14,18 @@ tests/test-results/
 tests/test-run-results/
 tests/.cache/
 
+# Runtime-generated pa11y-ci config (built per run by `drush utest:pa11y` from
+# the optional tests/accessibility/pa11y/.pa11yci.base.json override)
+tests/.pa11yci.json
+
+# Site-owned cspell dictionary. The suite does not track it, so suite updates
+# never touch it; sites commit their copy with `git add -f`. The lint lane
+# creates an empty one when missing.
+tests/code-quality/spelling/.cspell/site-words.txt
+
+# PHPUnit result cache (written by direct vendor/bin/phpunit runs in any dir)
+.phpunit.result.cache
+
 # Local environment (never commit real values)
 .env
 tests/.env

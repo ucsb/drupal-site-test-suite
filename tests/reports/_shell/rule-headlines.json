@@ -1,6 +1,6 @@
 {
   "$schema": "./rule-headlines.schema.json",
-  "_comment": "Plain-language overrides for tool-native rule output. Lookup key is `<test>:<rule_id>` (where `test` is alfa / axe / pa11y / lint / etc.). Add an entry when the tool's native message is jargony OR when a Drupal-specific fix hint adds value the generic message can't. Otherwise the emitter falls through to the tool's native message + tool-specific impact_category default — most lint rules don't need an entry here.",
+  "_comment": "Plain-language overrides for tool-native rule output. Lookup key is `<test>:<rule_id>` (where `test` is alfa / axe / pa11y / lint / etc.). Add an entry when the tool's native message is jargony OR when a Drupal-specific fix hint adds value the generic message can't. Otherwise the emitter falls through to the tool's native message + tool-specific impact_category default - most lint rules don't need an entry here.",
   "rules": {
     "alfa:SIA-R2": {
       "headline": "Image without alt text",
@@ -12,7 +12,7 @@
       "headline": "Page is missing a title",
       "impact_category": "content",
       "severity": "serious",
-      "fix_hint": "Add a non-empty, descriptive <title> element in the page <head> — screen-reader users rely on it to identify the page."
+      "fix_hint": "Add a non-empty, descriptive <title> element in the page <head>. Screen-reader users rely on it to identify the page."
     },
     "alfa:SIA-R4": {
       "headline": "Page is missing a valid language",
@@ -36,7 +36,7 @@
       "headline": "Visible label is not part of the accessible name",
       "impact_category": "screen-reader",
       "severity": "moderate",
-      "fix_hint": "Ensure the control's accessible name includes its visible label text — speech-input users say the visible label to activate it."
+      "fix_hint": "Ensure the control's accessible name includes its visible label text. Speech-input users say the visible label to activate it."
     },
     "alfa:SIA-R16": {
       "headline": "Element is missing a required ARIA state or property",
@@ -225,7 +225,7 @@
       "headline": "ARIA attribute name is not valid",
       "impact_category": "screen-reader",
       "severity": "serious",
-      "fix_hint": "Check spelling — only attributes from the WAI-ARIA spec are recognized (e.g., aria-labelledby, aria-describedby). Typos are silently ignored by assistive tech.",
+      "fix_hint": "Check spelling. Only attributes from the WAI-ARIA spec are recognized (e.g., aria-labelledby, aria-describedby). Typos are silently ignored by assistive tech.",
       "tags": ["wai-aria"]
     },
     "axe:aria-valid-attr-value": {
@@ -245,7 +245,7 @@
       "headline": "Page is missing a <title>",
       "impact_category": "screen-reader",
       "severity": "moderate",
-      "fix_hint": "Every page needs a <title> in <head> that uniquely describes its content. Drupal usually fills this from the node title — verify the head output."
+      "fix_hint": "Every page needs a <title> in <head> that uniquely describes its content. Drupal usually fills this from the node title; verify the head output."
     },
     "axe:frame-title": {
       "headline": "<iframe> missing a title attribute",
@@ -323,7 +323,7 @@
       "headline": "Interactive element nested inside another",
       "impact_category": "keyboard",
       "severity": "serious",
-      "fix_hint": "Avoid putting <button> inside <a> (or vice versa) — keyboard / assistive tech can't reliably target the inner control. Restructure so each interactive control is a sibling."
+      "fix_hint": "Avoid putting <button> inside <a> (or vice versa); keyboard / assistive tech can't reliably target the inner control. Restructure so each interactive control is a sibling."
     },
     "axe:object-alt": {
       "headline": "<object> missing alternative text",
@@ -440,7 +440,7 @@
       "headline": "Reference to an unknown class",
       "impact_category": "code-quality",
       "severity": "serious",
-      "fix_hint": "Check the FQCN — it may have moved (e.g., `Drupal\\Core\\Path\\PathAliasManagerInterface` is now `Drupal\\path_alias\\AliasManagerInterface`)."
+      "fix_hint": "Check the FQCN; it may have moved (e.g., `Drupal\\Core\\Path\\PathAliasManagerInterface` is now `Drupal\\path_alias\\AliasManagerInterface`)."
     },
     "lint:phpstan:classConstant.deprecated": {
       "headline": "Deprecated class constant in use",
@@ -453,7 +453,7 @@
       "headline": "JavaScript syntax error",
       "impact_category": "code-quality",
       "severity": "serious",
-      "fix_hint": "Fix the syntax. ESLint can't lint a file it can't parse — this blocks all other rules from running on it."
+      "fix_hint": "Fix the syntax. ESLint can't lint a file it can't parse; this blocks all other rules from running on it."
     },
 
     "lint:cspell:whitelist": {

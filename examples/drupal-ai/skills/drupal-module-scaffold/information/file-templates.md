@@ -4,9 +4,9 @@ Copy only the files the module actually needs (see the decision table in `SKILL.
 
 ## Modern Drupal coding standards (apply to every template below)
 
-These are why `core_version_requirement` is `^10.3 || ^11` — they all require Drupal 10.3+:
+These are why `core_version_requirement` is `^10.3 || ^11`: they all require Drupal 10.3+:
 
-- **Translatable strings.** Every user-facing string must be translatable: `$this->t('…')` in classes, `t('…')` in procedural code, and `{{ 'Text'|t }}` or `{% trans %}…{% endtrans %}` in Twig. Never output a raw UI string — including in template files.
+- **Translatable strings.** Every user-facing string must be translatable: `$this->t('…')` in classes, `t('…')` in procedural code, and `{{ 'Text'|t }}` or `{% trans %}…{% endtrans %}` in Twig. Never output a raw UI string; including in template files.
 - **Constructor property promotion** for injected dependencies (and use DI, never `\Drupal::service()` in a class):
 
 ```php
@@ -26,7 +26,7 @@ public function __construct(
 final class ExampleBlock extends BlockBase {}
 ```
 
-- **`#config_target` on `ConfigFormBase` forms** — bind each element to its config key instead of `#default_value` + a manual save; the parent class persists it (Drupal 10.3+):
+- **`#config_target` on `ConfigFormBase` forms**: bind each element to its config key instead of `#default_value` + a manual save; the parent class persists it (Drupal 10.3+):
 
 ```php
 $form['toolkit'] = [
@@ -35,10 +35,10 @@ $form['toolkit'] = [
   '#config_target' => 'system.image:toolkit',
   '#options' => [],
 ];
-// No submitForm() save needed — ConfigFormBase handles it.
+// No submitForm() save needed; ConfigFormBase handles it.
 ```
 
-- **OOP `#[Hook]` implementations** for the latest Drupal — see the hooks section below.
+- **OOP `#[Hook]` implementations** for the latest Drupal; see the hooks section below.
 
 ## `<module_name>.info.yml` (required)
 
@@ -54,10 +54,10 @@ dependencies:
 configure: <module_name>.settings_form  # only if the module has a settings form
 ```
 
-- `core_version_requirement: ^10.3 || ^11` — **always declare both**, even for code you think is D10-only; it keeps the module forward-compatible for the D10→D11 upgrade.
-- `package:` — **optional**; it only groups the module under a heading on the Extend (`admin/modules`) page. **For custom/site modules, set it** (e.g. `'Custom'` or your team/org name) so your modules are easy to find among core/contrib. **For a module destined for drupal.org (contrib), omit it** — drupal.org handles categorization and a custom package label is discouraged for contributed projects.
+- `core_version_requirement: ^10.3 || ^11`: **always declare both**, even for code you think is D10-only; it keeps the module forward-compatible for the D10→D11 upgrade.
+- `package:`: **optional**; it only groups the module under a heading on the Extend (`admin/modules`) page. **For custom/site modules, set it** (e.g. `'Custom'` or your team/org name) so your modules are easy to find among core/contrib. **For a module destined for drupal.org (contrib), omit it**: drupal.org handles categorization and a custom package label is discouraged for contributed projects.
 - List only runtime dependencies the module actually needs. Don't pad.
-- **No `version:` line** — Composer / `drush pm:list` derive it from the tag/release.
+- **No `version:` line**: Composer / `drush pm:list` derive it from the tag/release.
 
 ## `<module_name>.module` (keep it thin)
 
@@ -99,10 +99,10 @@ function <module_name>_help($route_name, RouteMatchInterface $route_match) {
 ```
 
 - Procedural hooks only. Business logic belongs in services under `src/`.
-- Keep any single hook under ~50 lines — extract to a service method.
+- Keep any single hook under ~50 lines; extract to a service method.
 - Type-hint entity parameters in `hook_ENTITY_TYPE_*` so static analysis can verify them.
 
-## Hook implementations — OOP `#[Hook]` vs procedural
+## Hook implementations: OOP `#[Hook]` vs procedural
 
 Drupal 11.1+ supports **object-oriented hook implementations**: a `#[Hook('name')]` attribute on a method of an autowired class (conventionally `src/Hook/<ModuleClass>Hooks.php`). A module targeting the **latest Drupal** should implement its regular hooks this way rather than procedurally in `.module`:
 
@@ -135,8 +135,8 @@ final class <ModuleClass>Hooks {
 Caveats:
 
 - `#[Hook]` requires **Drupal 11.1+**; on Drupal 10.x the attribute is ignored. If the module supports `^10.3 || ^11`, any hook that must also fire on 10.x needs a **procedural** implementation in `.module` (or target `^11` only). Decide per your support matrix.
-- **Install/update hooks stay procedural** in `.install` — `hook_install` / `hook_update_N` / `hook_uninstall` / `hook_requirements` / `hook_schema` are not regular hooks and aren't converted to `#[Hook]`.
-- The Hook class is autowired (auto-discovered); inject dependencies via the constructor (with property promotion) — never `\Drupal::service()`.
+- **Install/update hooks stay procedural** in `.install`: `hook_install` / `hook_update_N` / `hook_uninstall` / `hook_requirements` / `hook_schema` are not regular hooks and aren't converted to `#[Hook]`.
+- The Hook class is autowired (auto-discovered); inject dependencies via the constructor (with property promotion); never `\Drupal::service()`.
 
 ## `<module_name>.services.yml` (only when you have services)
 
@@ -150,7 +150,7 @@ services:
       - '@logger.factory'
 ```
 
-- Inject dependencies — never call `\Drupal::service()` inside a service class.
+- Inject dependencies; never call `\Drupal::service()` inside a service class.
 - Logger: inject `'@logger.factory'`, then `->get('<module_name>')` in the constructor.
 
 ## `<module_name>.install` (install/update/uninstall logic)
@@ -195,13 +195,13 @@ function <module_name>_uninstall() {
 function <module_name>_requirements($phase) {
   $requirements = [];
   if ($phase === 'runtime') {
-    // Report runtime status — e.g. an external API being reachable.
+    // Report runtime status, e.g. an external API being reachable.
   }
   return $requirements;
 }
 ```
 
-Update hooks (`hook_update_N`) live here too — use the **`drupal-hook-update-n`** skill for those patterns.
+Update hooks (`hook_update_N`) live here too; use the **`drupal-hook-update-n`** skill for those patterns.
 
 ## `<module_name>.permissions.yml` (when the module defines permissions)
 
@@ -233,10 +233,10 @@ use <human readable feature>:
 
 ## `config/install/` and `config/schema/`
 
-- `config/install/<module_name>.settings.yml` — default config the module ships with.
-- `config/schema/<module_name>.schema.yml` — schema for that config. **Required whenever you ship config** — omitting it makes the config untestable and trips coding-standards/CI checks.
+- `config/install/<module_name>.settings.yml`: default config the module ships with.
+- `config/schema/<module_name>.schema.yml`: schema for that config. **Required whenever you ship config**: omitting it makes the config untestable and trips coding-standards/CI checks.
 
-## Front-end assets — `<module_name>.libraries.yml`, CSS, JS (when the module ships styling/behavior)
+## Front-end assets: `<module_name>.libraries.yml`, CSS, JS (when the module ships styling/behavior)
 
 ```yaml
 # <module_name>.libraries.yml
@@ -254,7 +254,7 @@ global-styling:
 
 Attach the library where it's needed: in Twig `{{ attach_library('<module_name>/global-styling') }}`, in a render array `'#attached': { library: ['<module_name>/global-styling'] }`, or globally via `hook_page_attachments()`.
 
-`css/<module_name>.css` — starter stylesheet, populate as needed:
+`css/<module_name>.css`: starter stylesheet, populate as needed:
 
 ```css
 /**
@@ -269,7 +269,7 @@ Attach the library where it's needed: in Twig `{{ attach_library('<module_name>/
 }
 ```
 
-`js/<module_name>.js` — Drupal behavior, populate as needed:
+`js/<module_name>.js`: Drupal behavior, populate as needed:
 
 ```js
 /**
@@ -288,7 +288,7 @@ Attach the library where it's needed: in Twig `{{ attach_library('<module_name>/
 })(Drupal, once);
 ```
 
-## Twig template — `templates/<module_name>-component.html.twig` (when the module renders custom markup)
+## Twig template: `templates/<module_name>-component.html.twig` (when the module renders custom markup)
 
 Drupal template files are always `*.html.twig`, live in the module's **top-level `templates/`** directory, and are registered via `hook_theme()` (in `.module`):
 
@@ -322,7 +322,7 @@ function <module_name>_theme($existing, $type, $theme, $path) {
 
 ## `<module_name>.api.php` (only when the module defines hooks or an API)
 
-If the module **invokes its own hooks** or exposes an API for other modules, ship a `<module_name>.api.php` documenting them with full Doxygen comments (parameters, return, `@see`). The file is **documentation-only — never loaded at runtime**; it powers api.drupal.org and IDE hook discovery. Model it on Drupal core's `system.api.php`.
+If the module **invokes its own hooks** or exposes an API for other modules, ship a `<module_name>.api.php` documenting them with full Doxygen comments (parameters, return, `@see`). The file is **documentation-only; never loaded at runtime**; it powers api.drupal.org and IDE hook discovery. Model it on Drupal core's `system.api.php`.
 
 ```php
 <?php
@@ -375,15 +375,15 @@ function hook_<module_name>_alter(array &$context) {
 }
 ```
 
-For a site-level module inside a hosting upstream, `composer.json` is usually unnecessary — the root `composer.json` handles dependencies.
+For a site-level module inside a hosting upstream, `composer.json` is usually unnecessary, the root `composer.json` handles dependencies.
 
-## `README.md` (required) — follow Drupal's documentation-file standard
+## `README.md` (required): follow Drupal's documentation-file standard
 
 Documentation files follow the Drupal README standard:
 
-- **Format & name:** Markdown (`.md`) or plain text (`.txt`); **base name ALL-CAPS, extension lowercase** — `README.md`, `INSTALL.md`, `CHANGELOG.txt`, `TODO.txt` (never `readme.md` or `README.MD`).
-- **Section headers** inside the file are **initial-capitalized, not all-caps** — `## Requirements`, not `## REQUIREMENTS` (let `##` → `<h2>` carry the emphasis). The ALL-CAPS rule is for the *filename*, not the in-document headings.
-- **Line endings:** Unix LF (`\n`) only — never CRLF (`\r\n`) or CR (`\r`).
+- **Format & name:** Markdown (`.md`) or plain text (`.txt`); **base name ALL-CAPS, extension lowercase**: `README.md`, `INSTALL.md`, `CHANGELOG.txt`, `TODO.txt` (never `readme.md` or `README.MD`).
+- **Section headers** inside the file are **initial-capitalized, not all-caps**: `## Requirements`, not `## REQUIREMENTS` (let `##` → `<h2>` carry the emphasis). The ALL-CAPS rule is for the *filename*, not the in-document headings.
+- **Line endings:** Unix LF (`\n`) only; never CRLF (`\r\n`) or CR (`\r`).
 - **Wrapping:** hard-wrap at **80 characters**.
 - **Synopsis:** open with the same one-paragraph synopsis used on the module's drupal.org project page.
 - **Split when large:** if the README grows, move system requirements + install/config into `INSTALL.md` / `INSTALL.txt` and keep the README pointing to it.
@@ -394,7 +394,7 @@ Template (based on the drupal.org README template; lines hard-wrapped at 80):
 ```markdown
 # <Human Readable Name>
 
-<One-paragraph synopsis — the same text as the drupal.org project page.>
+<One-paragraph synopsis; the same text as the drupal.org project page.>
 
 
 ## Table of contents
@@ -411,7 +411,7 @@ Template (based on the drupal.org README template; lines hard-wrapped at 80):
 ## Requirements
 
 This module requires no modules outside of Drupal core.
-<Or: list required modules/libraries, each linked — including indirect ones.
+<Or: list required modules/libraries, each linked, including indirect ones.
 If there are none, write "No special requirements".>
 
 

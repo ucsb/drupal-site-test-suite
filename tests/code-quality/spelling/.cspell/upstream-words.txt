@@ -396,15 +396,12 @@ uncollapsed
 updatedb
 uriarray
 utalfa
-utalfaf
 utall
 utaxe
 utaxew
-utaxewf
 utbr
 utchk
 utest
-utidx
 utjsi
 utlint
 utpa
@@ -444,7 +441,6 @@ upserts
 walkthrough
 
 # Test-suite drush command + identifier fragments
-utaxef
 utreflow
 utmetaviewport
 worktree
@@ -489,6 +485,8 @@ sugg
 heatindex
 modestbranding
 adminevents
+commandfiles
+docblocks
 # Vendor / author / library handles
 friendsoftwig
 mglaman

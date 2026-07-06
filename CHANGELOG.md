@@ -14,6 +14,67 @@ Workflow:
 
 *Nothing yet. Changes accumulate here until the next release.*
 
+## 1.2.0
+
+### Added
+
+- One command per accessibility lane, replacing `drush utest:a11y`:
+  - `drush utest:alfa`
+  - `drush utest:axe`
+  - `drush utest:axe-watcher`
+  - `drush utest:pa11y`
+  - `drush utest:reflow`
+  - `drush utest:meta-viewport`
+- `drush utest:all` runs every lane plus lint and PHPUnit, then renders the
+  unified report.
+- Incomplete-run reporting: a lane that crawls 0 pages or errors on pages is
+  marked `INCOMPLETE` instead of passing. Shown in the reports and usable in
+  CI via the new `tests/accessibility/utils/lane-result.js` helper (prints
+  `passed` / `findings` / `failed` / `incomplete` per lane).
+- Scoped lint and PHPUnit runs for faster local feedback:
+  - `drush utest:lint --modules=module_one,module_two`
+  - `drush utest:phpunit --themes=theme_one`
+  - `UTEST_CUSTOM_*` env vars set a reusable scope; CLI options win over them.
+  - `--ignore-scope` runs everything for one run. `drush utest:all` always
+    runs the full suite.
+- PHPCS now checks PHPUnit test classes under each component's `tests/src/`.
+- The PHPUnit lane discovers tests in custom themes.
+- `drush utest:check-config` verifies more prerequisites, from PHP and npm
+  dependencies to a writable report directory, and validates the sitemap.
+- Sitemap validation reports unreachable or invalid sitemaps, wrong-host
+  URLs, and installer redirects. URLs containing `index.php` are allowed.
+
+### Changed
+
+- Every accessibility lane now uses the same gate: critical and serious
+  findings fail the run; moderate and minor findings are advisory.
+- `drush utest:all` ends with a per-lane summary table. Statuses: PASSED,
+  PASSED (advisory), FAILED, INCOMPLETE. The GitHub Actions example shows the
+  same table on the Actions run page.
+- Every lane renders its own HTML report, including pa11y and PHPUnit. The
+  unified report links each one.
+- The per-site cspell dictionary (`site-words.txt`) is no longer tracked in
+  this repo. Sites commit their copy in their own repo (`git add -f`), so
+  suite updates never touch it. The lint lane creates an empty one when the
+  file is missing.
+- The pa11y-ci config (`tests/.pa11yci.json`) is now generated at runtime;
+  an optional site-owned `tests/accessibility/pa11y/.pa11yci.base.json` can
+  override its defaults.
+- Added two dependencies: `fast-glob` finds custom-code files for the scoped
+  lint and PHPUnit runs; `js-yaml` parses YAML files in the lint checks.
+
+### Removed
+
+- `drush utest:a11y` (replaced by the per-lane commands above).
+- `drush utest:report-index` (superseded by `drush utest:report-render`).
+- Unused npm scripts in `tests/package.json` (`install:browsers` and
+  `lint:upstream` remain); drush and CI call the tools directly.
+- Superseded suite files: the key-page Alfa/axe specs
+  (`alfa-accessibility.spec.js`, `a11y.spec.ts`, `a11y-watcher.spec.ts`),
+  `alfa-config.js`, the legacy `report-generator.js` (replaced by the shared
+  `findings-report.js` renderer), the tracked `tests/.pa11yci.json`, and the
+  unused `.yamllint` config.
+
 ## 1.1.0
 
 ### Added
@@ -57,7 +118,7 @@ Workflow:
   without logging in; pages behind a login are not covered in this version.
 - **Accessibility profiles & gating:** selectable `strict` / `standard` /
   `comprehensive` / `custom` profiles (`comprehensive` is the CI default for
-  full visibility) plus severity filtering — merge gating blocks on
+  full visibility) plus severity filtering; merge gating blocks on
   `critical` + `serious` only.
 - **Code-quality lanes:** PHPCS (Drupal + DrupalPractice), PHPStan (baseline-managed),
   ESLint (Drupal Core config), cspell, TwigCS + HTMLHint, Stylelint
@@ -70,7 +131,7 @@ Workflow:
   (security-sensitive permissions declare `restrict access: true`).
 - **Functional / regression lane:** custom-module PHPUnit (Unit + Kernel) via
   `drush utest:phpunit` over `web/modules/custom` + `web/profiles/custom` test
-  classes — core and contrib are never run. Report-only and fail-soft: skips
+  classes; core and contrib are never run. Report-only and fail-soft: skips
   when dev dependencies are absent, runs Unit-only without `pdo_sqlite`, and
   runs the same way in CI via `node tests/phpunit/run.js` (no Drupal bootstrap).
 - **Security lanes:** `composer validate --strict` (composer.json schema +
@@ -80,11 +141,11 @@ Workflow:
 - **Unified report:** aggregates every engine into one filterable view (Rules /
   Impact / Severity chips, collapsible groups, per-finding accordions), links to
   per-tool detail reports, and shows friendly Alfa rule titles resolved in-process
-  from the official `@siteimprove/alfa-rules` SDK — no network calls or API key.
+  from the official `@siteimprove/alfa-rules` SDK, with no network calls or API key.
 - **Portability & configuration:** three-layer custom-code path discovery
   (`composer.json` installer-paths → `custom-paths.json` → `*.info.yml`
   autodiscovery), per-site cspell additions via `site-words.txt`, and graceful
-  degradation — a missing tool skips only its own lane with a warning while the
+  degradation: a missing tool skips only its own lane with a warning while the
   rest of the run continues. Contrib, core, `vendor`, and `node_modules` are
   never scanned.
 - **Example CI integration:** ready-to-copy pipelines for GitHub Actions, GitLab

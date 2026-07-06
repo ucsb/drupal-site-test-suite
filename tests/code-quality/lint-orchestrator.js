@@ -4,14 +4,14 @@ import fs from 'fs';
 import path from 'path';
 import yaml from 'js-yaml';
 import fg from 'fast-glob';
-import { execSync } from 'child_process';
+import { execSync, execFileSync } from 'child_process';
 import { fileURLToPath } from 'url';
 import { writeLintFindings, buildSurface } from '../accessibility/utils/findings-emitter.js';
 
 // stylelint and htmlhint are lane-specific in-process tools, loaded lazily and
 // defensively: if one isn't installed, only its lane is skipped (one-time
 // warning) instead of crashing the whole lint pass. (fast-glob / js-yaml are
-// core infrastructure used across every lane and are imported statically — a
+// core infrastructure used across every lane and are imported statically - a
 // missing one is a broken install that should fail loudly.)
 const _optionalToolWarned = new Set();
 async function loadOptionalTool(name) {
@@ -20,7 +20,7 @@ async function loadOptionalTool(name) {
   } catch (err) {
     if (!_optionalToolWarned.has(name)) {
       _optionalToolWarned.add(name);
-      console.warn(`⚠️  ${name} is not installed — skipping its lint lane (run \`npm ci\` in tests/ to enable): ${err.message}`);
+      console.warn(`⚠️  ${name} is not installed - skipping its lint lane (run \`npm ci\` in tests/ to enable): ${err.message}`);
     }
     return null;
   }
@@ -101,9 +101,9 @@ class ModuleLinter {
     // Set reports directory based on environment
     // In CI/CD: generate to tests/reports/lint/ so the CI workflow can upload it (to the host/preview environment)
     // In local development: generate to web/sites/default/files/test-reports/lint/ for direct access
-    this.reportsDir = isCI
+    this.reportsDir = process.env.LINT_OUTPUT_DIR || (isCI
       ? path.join(this.baseDir, 'tests/reports/lint')
-      : path.join(this.baseDir, 'web/sites/default/files/test-reports/lint');
+      : path.join(this.baseDir, 'web/sites/default/files/test-reports/lint'));
 
     this.lintingDir = path.join(this.baseDir, 'tests/code-quality');
     this.results = {
@@ -115,6 +115,10 @@ class ModuleLinter {
       warnings: 0,
       startTime: Date.now()
     };
+
+    // Project-wide lanes that threw, keyed by lane. Surfaced as a distinct
+    // "lane error" status so a crash isn't mistaken for a clean run.
+    this.laneErrors = {};
 
     // Raw PHPCS / PHPStan / ESLint / cspell / composer / markdownlint /
     // actionlint findings collected across all scopes, consumed later by
@@ -145,55 +149,41 @@ class ModuleLinter {
     // Ensure reports directory exists
     this.ensureReportsDir();
 
-    // Handle argument parsing - if only one argument provided, determine if it's a module or theme
+    const optionModules = this.normalizeTargets(options.modules || []);
+    const optionThemes = this.normalizeTargets(options.themes || []);
+    const optionProfiles = this.normalizeTargets(options.profileTargets || []);
     let actualTargetModule = targetModule;
     let actualTargetTheme = targetTheme;
 
-    if (targetModule && !targetTheme) {
-      // Only one argument provided - check if it's a module or theme
+    // Backward compatibility: a single positional target can be a module or a
+    // theme. Prefer modules when a custom module exists with that machine name.
+    if (targetModule && !targetTheme && optionModules.length === 0 && optionThemes.length === 0) {
       const modulePath = path.join(this.modulesDir, targetModule);
       const customModulePath = path.join(this.modulesDir, 'custom', targetModule);
       const themePath = path.join(this.themesDir, targetModule);
 
-      if (fs.existsSync(modulePath)) {
-        // It's a module (exact path)
+      if (fs.existsSync(modulePath) || fs.existsSync(customModulePath) || this.findModuleInSubdirs(targetModule)) {
         actualTargetModule = targetModule;
         actualTargetTheme = null;
-      } else if (fs.existsSync(customModulePath)) {
-        // It's a module under custom/ (backward compatibility)
-        actualTargetModule = path.join('custom', targetModule);
-        actualTargetTheme = null;
       } else if (fs.existsSync(themePath)) {
-        // It's a theme
         actualTargetModule = null;
         actualTargetTheme = targetModule;
       } else {
-        // Try to find it in subdirectories as a module
-        const foundModulePath = this.findModuleInSubdirs(targetModule);
-        if (foundModulePath) {
-          actualTargetModule = targetModule;
-          actualTargetTheme = null;
-        } else {
-          // Assume it's a theme (will fail gracefully if not found)
-          actualTargetModule = null;
-          actualTargetTheme = targetModule;
-        }
+        actualTargetModule = null;
+        actualTargetTheme = targetModule;
       }
     }
 
-    // Determine what to lint based on parameters
-    const shouldLintAll = !actualTargetModule && !actualTargetTheme && !options.theme;
-    // Always lint modules: all when --theme only, specific when --module specified
-    const shouldLintModules = shouldLintAll || actualTargetModule || actualTargetTheme;
-    const shouldLintThemes = shouldLintAll || actualTargetTheme || options.theme;
-    // Profiles are project-wide — scan whenever scope is broad (all or theme).
-    // Skip only when narrowing to a single module via --module.
-    const shouldLintProfiles = shouldLintAll || actualTargetTheme || options.theme;
+    const requestedModules = optionModules.length ? optionModules : this.normalizeTargets(actualTargetModule ? [actualTargetModule] : []);
+    const requestedThemes = optionThemes.length ? optionThemes : this.normalizeTargets(actualTargetTheme ? [actualTargetTheme] : []);
+    const requestedProfiles = optionProfiles;
+    const shouldLintAll = requestedModules.length === 0 && requestedThemes.length === 0 && requestedProfiles.length === 0;
 
-    // Discover components to lint
-    const modules = shouldLintModules ? this.discoverModules(actualTargetModule) : [];
-    const themes = shouldLintThemes ? this.discoverThemes(actualTargetTheme) : [];
-    const profiles = shouldLintProfiles ? this.discoverProfiles() : [];
+    // Discover components to lint. Scoped runs lint only the requested custom
+    // code surfaces; full runs scan every custom module, theme, and profile.
+    const modules = shouldLintAll ? this.discoverModules() : (requestedModules.length ? this.discoverModules(requestedModules) : []);
+    const themes = shouldLintAll ? this.discoverThemes() : (requestedThemes.length ? this.discoverThemes(requestedThemes) : []);
+    const profiles = shouldLintAll ? this.discoverProfiles() : (requestedProfiles.length ? this.discoverProfiles(requestedProfiles) : []);
 
     const totalItems = modules.length + themes.length + profiles.length;
     if (totalItems === 0) {
@@ -234,7 +224,7 @@ class ModuleLinter {
       await this.lintProfile(profile);
     }
 
-    // Lint custom PHP outside web/{modules,themes,profiles} — drush commands,
+    // Lint custom PHP outside web/{modules,themes,profiles} - drush commands,
     // composer scripts, and anything else declared in custom-paths.json. Only
     // on a full repo-wide run; scoped --module / --theme runs stay focused,
     // mirroring how profiles are gated.
@@ -246,99 +236,21 @@ class ModuleLinter {
       }
     }
 
-    // PHPStan analyses the whole tree once (cross-module class resolution
-    // matters), so it runs after the per-module pass rather than inside
-    // lintModule(). Failures don't fault the legacy flow.
-    try {
-      this.runPhpStan();
-    } catch (err) {
-      console.warn(`⚠️  PHPStan run failed: ${err.message}`);
-    }
-
-    // Static next-major readiness: flag custom modules / themes / profiles whose
-    // `core_version_requirement` doesn't allow the next Drupal major. Catches
-    // structural incompatibility (e.g. CKEditor 4 plugin modules) that
-    // deprecation-API scanning can't see — the incompatibility is the dependency
-    // + version declaration, not a deprecated call.
-    try {
-      this.checkCoreVersionCompat([...modules, ...themes, ...profiles]);
-    } catch (err) {
-      console.warn(`⚠️  Core-version compat check failed: ${err.message}`);
-    }
-
-    // Verify library asset paths in custom code resolve on disk.
-    try {
-      this.lintLibraryAssets([...modules, ...themes, ...profiles]);
-    } catch (err) {
-      console.warn(`⚠️  Library-asset reference check failed: ${err.message}`);
-    }
-
-    // Verify library dependencies and Twig attach_library() refs resolve.
-    try {
-      this.lintLibraryReferences([...modules, ...themes, ...profiles]);
-    } catch (err) {
-      console.warn(`⚠️  Library reference check failed: ${err.message}`);
-    }
-
-    // Verify hardcoded asset paths in Twig templates resolve on disk.
-    try {
-      this.lintTemplateAssets([...modules, ...themes, ...profiles]);
-    } catch (err) {
-      console.warn(`⚠️  Template-asset reference check failed: ${err.message}`);
-    }
-
-    // Config-install hygiene: shipped config must not carry site-specific
-    // metadata (uuid / _core) that breaks import across the downstream fleet.
-    try {
-      this.checkConfigHygiene([...modules, ...themes, ...profiles]);
-    } catch (err) {
-      console.warn(`⚠️  Config hygiene check failed: ${err.message}`);
-    }
-
-    // Permission baseline: security-sensitive custom permissions should declare
-    // `restrict access: true` (core's convention) so admins are warned.
-    try {
-      this.checkPermissionBaseline([...modules, ...themes, ...profiles]);
-    } catch (err) {
-      console.warn(`⚠️  Permission baseline check failed: ${err.message}`);
-    }
-
-    // cspell is glob-driven and amortizes much better as a single
-    // invocation than per-module. Same failure containment as PHPStan.
-    try {
-      this.runCspell();
-    } catch (err) {
-      console.warn(`⚠️  cspell run failed: ${err.message}`);
-    }
-
-    // Composer manifest validation runs once at project root. The lane
-    // catches lock-file drift, schema violations, and known-CVE deps —
-    // all project-scoped, not per-module.
-    try {
-      this.runComposer();
-    } catch (err) {
-      console.warn(`⚠️  composer validation failed: ${err.message}`);
-    }
-
-    // markdownlint runs once over the full markdown scope (top-level
-    // README, docs/, .github/, tests/, etc.) — per-module scans only see
-    // module-internal .md files. Same failure containment as the others.
-    try {
-      this.runMarkdownlint();
-    } catch (err) {
-      console.warn(`⚠️  markdownlint run failed: ${err.message}`);
-    }
-
-    // actionlint validates GitHub Actions workflow YAML and inline shell
-    // scripts (via shellcheck integration when shellcheck is on PATH).
-    // Skips silently if actionlint isn't installed locally — install
-    // with `brew install actionlint` or via the rhysd/actionlint action
-    // in CI.
-    try {
-      this.runActionlint();
-    } catch (err) {
-      console.warn(`⚠️  actionlint run failed: ${err.message}`);
-    }
+    // Project-wide lanes run once over the whole tree (not per-module). Each is
+    // isolated via runLane(): a throw is recorded as a lane error, never
+    // faulting the rest. cspell/actionlint skip internally when their tool is absent.
+    const laneScopes = [...modules, ...themes, ...profiles];
+    this.runLane('phpstan', 'PHPStan', () => this.runPhpStan());
+    this.runLane('deprecations', 'Core-version compat', () => this.checkCoreVersionCompat(laneScopes));
+    this.runLane('references', 'Library-asset reference', () => this.lintLibraryAssets(laneScopes));
+    this.runLane('references', 'Library reference', () => this.lintLibraryReferences(laneScopes));
+    this.runLane('references', 'Template-asset reference', () => this.lintTemplateAssets(laneScopes));
+    this.runLane('config', 'Config hygiene', () => this.checkConfigHygiene(laneScopes));
+    this.runLane('permissions', 'Permission baseline', () => this.checkPermissionBaseline(laneScopes));
+    this.runLane('cspell', 'cspell', () => this.runCspell());
+    this.runLane('composer', 'Composer', () => this.runComposer());
+    this.runLane('markdownlint', 'markdownlint', () => this.runMarkdownlint());
+    this.runLane('actionlint', 'actionlint', () => this.runActionlint());
 
     // Generate summary report
     this.generateSummaryReport();
@@ -364,7 +276,7 @@ class ModuleLinter {
 
     // Emit unified test-suite-findings.json so the test-suite renderer can aggregate
     // PHPCS + PHPStan results alongside Alfa/axe/pa11y. Failure here must
-    // not crash the legacy lint flow — it's purely informational for the
+    // not crash the legacy lint flow - it's purely informational for the
     // new shell.
     try {
       // Normalize every finding's `file` path to repo-relative form before
@@ -380,7 +292,7 @@ class ModuleLinter {
           // Reconstruct the path the emitter would display (phpcs/eslint build
           // it from `scope_name` + `file`, where scope_name is web/modules- or
           // web/themes-relative; other lanes carry it on `path`/`file`),
-          // normalize it to repo-relative, and store it on `path` — which the
+          // normalize it to repo-relative, and store it on `path` - which the
           // emitter's scopedPath() now prefers.
           const raw = (f.scope_name && f.file) ? `${f.scope_name}/${f.file}` : (f.path || f.file);
           if (typeof raw === 'string') f.path = this.normalizeRepoPath(raw);
@@ -401,8 +313,11 @@ class ModuleLinter {
           actionlint: this.actionlintFindings,
         },
         {
-          files_scanned: this.phpFilesScanned + this.jsFilesScanned,
+          // Total files checked across every lane and file type, matching
+          // the console "Files checked" summary line.
+          files_scanned: this.results.totalFiles,
           duration_ms: Date.now() - this.results.startTime,
+          lane_errors: this.laneErrors,
         },
         this.reportsDir,
       );
@@ -418,69 +333,89 @@ class ModuleLinter {
   }
 
   /**
+   * Normalize comma/space-separated target lists from CLI options.
+   */
+  normalizeTargets(values) {
+    const raw = Array.isArray(values) ? values : [values];
+    return [...new Set(raw
+      .flatMap(value => String(value || '').split(/[\s,]+/))
+      .map(value => value.trim())
+      .filter(Boolean))];
+  }
+
+  /**
    * Discover modules to lint
    */
   discoverModules(targetModule) {
     const modules = [];
+    const targets = this.normalizeTargets(targetModule || []);
 
-    if (targetModule) {
-      // Specific module requested - handle both direct paths and nested paths
-      let modulePath = path.join(this.modulesDir, targetModule);
-      let moduleName = targetModule;
-
-      // If the targetModule contains a slash, it might be a nested path
-      if (targetModule.includes('/')) {
-        modulePath = path.join(this.modulesDir, targetModule);
-        moduleName = targetModule;
-
-        // If not found, try prepending 'custom/' (backward compatibility)
-        if (!fs.existsSync(modulePath)) {
-          const customPath = path.join(this.modulesDir, 'custom', targetModule);
-          if (fs.existsSync(customPath)) {
-            modulePath = customPath;
-            moduleName = path.join('custom', targetModule);
-          }
-        }
-      } else {
-        // Try direct path first
-        modulePath = path.join(this.modulesDir, targetModule);
-        if (!fs.existsSync(modulePath)) {
-          // Try to find it in subdirectories
-          const foundPath = this.findModuleInSubdirs(targetModule);
-          if (foundPath) {
-            modulePath = foundPath;
-            moduleName = path.relative(this.modulesDir, modulePath);
-          }
-        }
+    if (targets.length) {
+      for (const target of targets) {
+        const module = this.discoverModule(target);
+        if (module) modules.push(module);
       }
-
-      if (fs.existsSync(modulePath)) {
-        const infoFile = path.join(modulePath, `${path.basename(modulePath)}.info.yml`);
-        if (fs.existsSync(infoFile)) {
-          modules.push({
-            name: moduleName,
-            path: modulePath,
-            infoFile: infoFile
-          });
-        } else {
-          console.error(`❌ Module info file not found: ${infoFile}`);
-          process.exit(1);
-        }
-      } else {
-        console.error(`❌ Module '${targetModule}' not found in ${this.modulesDir}`);
-        process.exit(1);
-      }
-    } else {
-      // Discover all custom modules recursively
-      if (!fs.existsSync(this.modulesDir)) {
-        console.error(`❌ Modules directory not found: ${this.modulesDir}`);
-        process.exit(1);
-      }
-
-      modules.push(...this.findAllModules(this.modulesDir));
+      return modules;
     }
 
+    // Discover all custom modules recursively
+    if (!fs.existsSync(this.modulesDir)) {
+      console.error(`❌ Modules directory not found: ${this.modulesDir}`);
+      process.exit(1);
+    }
+
+    modules.push(...this.findAllModules(this.modulesDir));
     return modules;
+  }
+
+  /**
+   * Discover a single module by machine name or modules-relative path.
+   */
+  discoverModule(targetModule) {
+    let modulePath = path.join(this.modulesDir, targetModule);
+    let moduleName = targetModule;
+
+    // If the targetModule contains a slash, it might be a nested path.
+    if (targetModule.includes('/')) {
+      modulePath = path.join(this.modulesDir, targetModule);
+      moduleName = targetModule;
+
+      // If not found, try prepending 'custom/' (backward compatibility).
+      if (!fs.existsSync(modulePath)) {
+        const customPath = path.join(this.modulesDir, 'custom', targetModule);
+        if (fs.existsSync(customPath)) {
+          modulePath = customPath;
+          moduleName = path.join('custom', targetModule);
+        }
+      }
+    } else {
+      // Try direct path first.
+      modulePath = path.join(this.modulesDir, targetModule);
+      if (!fs.existsSync(modulePath)) {
+        // Try to find it in subdirectories.
+        const foundPath = this.findModuleInSubdirs(targetModule);
+        if (foundPath) {
+          modulePath = foundPath;
+          moduleName = path.relative(this.modulesDir, modulePath);
+        }
+      }
+    }
+
+    if (fs.existsSync(modulePath)) {
+      const infoFile = path.join(modulePath, `${path.basename(modulePath)}.info.yml`);
+      if (fs.existsSync(infoFile)) {
+        return {
+          name: moduleName,
+          path: modulePath,
+          infoFile: infoFile
+        };
+      }
+      console.error(`❌ Module info file not found: ${infoFile}`);
+      process.exit(1);
+    }
+
+    console.error(`❌ Module '${targetModule}' not found in ${this.modulesDir}`);
+    process.exit(1);
   }
 
   /**
@@ -548,16 +483,38 @@ class ModuleLinter {
   /**
    * Discover profiles to lint
    */
-  discoverProfiles() {
+  discoverProfiles(targetProfiles = null) {
     const profiles = [];
 
     if (!fs.existsSync(this.profilesDir)) {
       return profiles;
     }
 
-    // Discover profiles recursively. Drupal allows profiles at the top
-    // level (web/profiles/foo) or nested under custom/ (web/profiles/custom/foo);
-    // skip core / contrib / test fixtures by name.
+    const allProfiles = this.findAllProfiles();
+    const targets = this.normalizeTargets(targetProfiles || []);
+    if (!targets.length) {
+      return allProfiles;
+    }
+
+    for (const target of targets) {
+      const match = allProfiles.find(profile =>
+        profile.name === target || path.basename(profile.path) === target
+      );
+      if (!match) {
+        console.error(`❌ Profile '${target}' not found in ${this.profilesDir}`);
+        process.exit(1);
+      }
+      profiles.push(match);
+    }
+
+    return profiles;
+  }
+
+  /**
+   * Find all custom profiles recursively.
+   */
+  findAllProfiles() {
+    const profiles = [];
     const profilesDir = this.profilesDir;
     const skip = new Set(['testing', 'minimal', 'standard', 'demo_umami', 'contrib']);
 
@@ -576,7 +533,7 @@ class ModuleLinter {
             infoFile: infoFile
           });
         } else {
-          // Not a profile dir itself — descend (e.g. web/profiles/custom/).
+          // Not a profile dir itself - descend (e.g. web/profiles/custom/).
           scan(itemPath);
         }
       }
@@ -596,51 +553,60 @@ class ModuleLinter {
       return themes;
     }
 
-    // If a specific theme is requested, only check that one
-    if (targetTheme) {
-      const themePath = path.join(this.themesDir, targetTheme);
-      const stat = fs.statSync(themePath);
-
-      if (stat.isDirectory()) {
-        // Check if this is a theme directory
-        const infoFile = path.join(themePath, `${targetTheme}.info.yml`);
-        if (fs.existsSync(infoFile)) {
-          themes.push({
-            name: targetTheme,
-            path: themePath,
-            infoFile: infoFile
-          });
-        } else {
-          console.error(`❌ Theme '${targetTheme}' not found or invalid (missing ${targetTheme}.info.yml)`);
-          process.exit(1);
-        }
-      } else {
-        console.error(`❌ Theme '${targetTheme}' not found in ${this.themesDir}`);
-        process.exit(1);
+    const targets = this.normalizeTargets(targetTheme || []);
+    if (targets.length) {
+      for (const target of targets) {
+        themes.push(this.discoverTheme(target));
       }
-
       return themes;
     }
 
-    // Discover all custom themes (when no specific theme requested)
-    const items = fs.readdirSync(this.themesDir);
-    for (const item of items) {
-      const itemPath = path.join(this.themesDir, item);
-      const stat = fs.statSync(itemPath);
+    return this.findAllThemes();
+  }
 
-      if (stat.isDirectory() && item !== 'contrib' && item !== 'tests' && !item.startsWith('Test')) {
-        // Check if this is a theme directory
-        const infoFile = path.join(itemPath, `${item}.info.yml`);
-        if (fs.existsSync(infoFile)) {
-          themes.push({
-            name: item,
-            path: itemPath,
-            infoFile: infoFile
-          });
+  /**
+   * Discover a single custom theme by machine name or themes-relative path.
+   */
+  discoverTheme(targetTheme) {
+    const allThemes = this.findAllThemes();
+    const match = allThemes.find(theme =>
+      theme.name === targetTheme || path.basename(theme.path) === targetTheme
+    );
+    if (match) return match;
+
+    console.error(`❌ Theme '${targetTheme}' not found in ${this.themesDir}`);
+    process.exit(1);
+  }
+
+  /**
+   * Find all custom themes recursively.
+   */
+  findAllThemes() {
+    const themes = [];
+    const themesDir = this.themesDir;
+
+    function scan(directory) {
+      const items = fs.readdirSync(directory);
+      for (const item of items) {
+        const itemPath = path.join(directory, item);
+        const stat = fs.statSync(itemPath);
+
+        if (stat.isDirectory() && item !== 'contrib' && item !== 'tests' && !item.startsWith('Test')) {
+          const infoFile = path.join(itemPath, `${item}.info.yml`);
+          if (fs.existsSync(infoFile)) {
+            themes.push({
+              name: path.relative(themesDir, itemPath),
+              path: itemPath,
+              infoFile: infoFile
+            });
+          } else {
+            scan(itemPath);
+          }
         }
       }
     }
 
+    scan(this.themesDir);
     return themes;
   }
 
@@ -659,8 +625,11 @@ class ModuleLinter {
     };
 
     try {
-      // Lint PHP files
-      const phpFiles = this.findFiles(theme.path, ['.php', '.theme']);
+      // Lint PHP files, including PHPUnit test classes under tests/src.
+      const phpFiles = [
+        ...this.findFiles(theme.path, ['.php', '.theme']),
+        ...this.findTestClassFiles(theme.path),
+      ];
       if (phpFiles.length > 0) {
         console.log(`  PHP files: ${phpFiles.length}`);
         themeResults.files.push(...await this.lintPHPFiles(phpFiles, theme));
@@ -754,24 +723,18 @@ class ModuleLinter {
     }
 
     const configPath = path.join(this.lintingDir, 'linting', '.markdownlint.json');
-    const fileArgs = files.map(f => `"${f}"`).join(' ');
-    // markdownlint-cli2 writes JSON to stderr when --output is unset and
-    // a non-default reporter is passed. Easier path: write to a temp
-    // file and read it back.
-    const reportFile = path.join(this.reportsDir, '.markdownlint-report.json');
     fs.mkdirSync(this.reportsDir, { recursive: true });
 
     // markdownlint-cli2 picks up `markdownlint-cli2-formatter-json` if installed.
     // Fall back to the default formatter (text on stdout) otherwise.
-    const cli2Command = `"${cli2}" --config "${configPath}" ${fileArgs}`;
-
+    // Files go as argv (no shell) so a crafted filename can't inject commands.
     let stderr = '';
     try {
-      execSync(cli2Command, {
+      execFileSync(cli2, ['--config', configPath, ...files], {
         encoding: 'utf8',
         cwd: this.baseDir,
         maxBuffer: 32 * 1024 * 1024,
-        // Capture stderr instead of inheriting it — the violation list is
+        // Capture stderr instead of inheriting it - the violation list is
         // parsed below into per-file results; streaming raw findings to
         // the parent process floods the CI log on every per-module run.
         stdio: ['ignore', 'pipe', 'pipe'],
@@ -811,7 +774,7 @@ class ModuleLinter {
   }
 
   /**
-   * Run markdownlint-cli2 once over the upstream's full markdown scope —
+   * Run markdownlint-cli2 once over the upstream's full markdown scope -
    * top-level README, docs/, .github/, tests/, drush/ and the per-module
    * markdown roots. Per-module scans (lintMarkdownFiles) feed the legacy
    * HTML report but only see files inside the module being scanned, so
@@ -827,7 +790,7 @@ class ModuleLinter {
     // Globs mirror tests/package.json#scripts.lint:markdown. Keep them
     // in sync so direct CLI usage produces the same report as the
     // orchestrator pass. Negated globs explicitly exclude node_modules,
-    // vendor, contrib, and Drupal core — markdownlint-cli2 doesn't
+    // vendor, contrib, and Drupal core - markdownlint-cli2 doesn't
     // honor .gitignore by default.
     const globs = [
       'README.md',
@@ -843,14 +806,14 @@ class ModuleLinter {
       '!**/contrib/**',
       '!**/bin/**',
       '!web/core/**',
-      // Vendored upstream base theme — Bootstrap ships its own legacy
+      // Vendored upstream base theme - Bootstrap ships its own legacy
       // README/CHANGELOG/CONTRIBUTING with hundreds of pre-existing
       // markdownlint violations that aren't ours to fix.
       '!web/themes/*/bootstrap/**',
     ];
     const cmd = `"${cli2}" --config "${configPath}" ${globs.map(g => `"${g}"`).join(' ')}`;
 
-    // Capture stderr instead of inheriting it — the violation list is
+    // Capture stderr instead of inheriting it - the violation list is
     // parsed below and surfaced in the unified report; streaming raw
     // findings to the parent process flooded the CI log and (with very
     // verbose vendored markdown) appeared to be tipping the orchestrator
@@ -891,7 +854,7 @@ class ModuleLinter {
 
   /**
    * Run actionlint over .github/workflows and .github/actions. Lane is
-   * silently skipped when the binary isn't installed locally —
+   * silently skipped when the binary isn't installed locally -
    * actionlint is a Go binary, not a npm dep, so it doesn't
    * auto-install with `npm ci`. CI either installs via apt/brew or
    * uses the rhysd/actionlint action.
@@ -901,7 +864,7 @@ class ModuleLinter {
     if (!fs.existsSync(workflowsDir)) return;
     const bin = this.findActionlintBin();
     if (!bin) {
-      // No warning — actionlint is intentionally optional locally.
+      // No warning - actionlint is intentionally optional locally.
       return;
     }
     console.log(`Running actionlint…`);
@@ -914,6 +877,9 @@ class ModuleLinter {
         encoding: 'utf8',
         cwd: this.baseDir,
         maxBuffer: 32 * 1024 * 1024,
+        // SC2086 (quoting) and SC2129 (redirect grouping) are info/style noise
+        // in our controlled CI run blocks; keep warnings and errors.
+        env: { ...process.env, SHELLCHECK_OPTS: '--exclude=SC2086,SC2129' },
       });
     } catch (error) {
       // actionlint exits non-zero when issues exist; the JSON is still on stdout.
@@ -932,7 +898,7 @@ class ModuleLinter {
     for (const issue of parsed) {
       const message = issue.message || '';
       const kind = issue.kind || 'unknown';
-      // shellcheck findings carry an SC#### code — split it out so the
+      // shellcheck findings carry an SC#### code - split it out so the
       // grouped report shows one entry per SC code rather than one big
       // "shellcheck (40 occurrences)" entry.
       let ruleId = `actionlint:${kind}`;
@@ -988,7 +954,7 @@ class ModuleLinter {
     const twigcsBin = path.join(this.baseDir, 'vendor/bin/twigcs');
     const twigcsAvailable = fs.existsSync(twigcsBin);
     if (!twigcsAvailable && files.length > 0 && !this._twigcsMissingWarned) {
-      console.warn(`⚠️  TwigCS binary not found at ${twigcsBin} — skipping TwigCS lint for Twig files.`);
+      console.warn(`⚠️  TwigCS binary not found at ${twigcsBin} - skipping TwigCS lint for Twig files.`);
       console.warn(`   Run \`composer install\` (or \`composer require --dev friendsoftwig/twigcs\`) to enable.`);
       this._twigcsMissingWarned = true;
     }
@@ -1000,11 +966,9 @@ class ModuleLinter {
     const normPath = p => path.resolve('/', String(p).replace(/^\/+/, ''));
     const twigByFile = new Map();
     if (twigcsAvailable && files.length > 0) {
-      const fileArgs = files.map(f => `"${f}"`).join(' ');
-      const twigcsCommand = `"${twigcsBin}" ${fileArgs} --config code-quality/linting/.twigcs.php --reporter json`;
       let twigOut = '';
       try {
-        twigOut = execSync(twigcsCommand, {
+        twigOut = execFileSync(twigcsBin, [...files, '--config', 'code-quality/linting/.twigcs.php', '--reporter', 'json'], {
           encoding: 'utf8',
           cwd: path.join(__dirname, '..'),
           maxBuffer: 1024 * 1024 * 64
@@ -1030,14 +994,14 @@ class ModuleLinter {
       }
     }
 
-    // HTMLHint a11y ruleset — read once and reuse across files (and scopes).
+    // HTMLHint a11y ruleset - read once and reuse across files (and scopes).
     if (!this._htmlhintRuleset) {
       this._htmlhintRuleset = JSON.parse(
         fs.readFileSync(path.join(__dirname, 'linting', '.htmlhintrc.json'), 'utf8')
       );
     }
 
-    // HTMLHint is optional — if it isn't installed, TwigCS above still runs.
+    // HTMLHint is optional - if it isn't installed, TwigCS above still runs.
     const htmlhintMod = await loadOptionalTool('htmlhint');
     const HTMLHint = htmlhintMod?.default?.HTMLHint || htmlhintMod?.HTMLHint || null;
 
@@ -1051,7 +1015,7 @@ class ModuleLinter {
         issues: []
       };
 
-      // 1. TwigCS — code quality (pulled from the single batched run above).
+      // 1. TwigCS - code quality (pulled from the single batched run above).
       const twigViolations = twigByFile.get(normPath(file)) || [];
       for (const v of twigViolations) {
         const isError = v.type === 'error';
@@ -1068,7 +1032,7 @@ class ModuleLinter {
         }
       }
 
-      // 2. HTMLHint — accessibility checks (alt-require, input-requires-label,
+      // 2. HTMLHint - accessibility checks (alt-require, input-requires-label,
       // etc.) run in-process via the Node API. HTMLHint.verify() returns the
       // same messages the `npx htmlhint --format json` CLI did, with no
       // subprocess (and no npx resolution) per Twig file.
@@ -1144,12 +1108,9 @@ class ModuleLinter {
 
     const configPath = path.join(this.lintingDir, 'linting', '.eslintrc.json');
     const ignorePath = path.join(this.lintingDir, 'linting', '.eslintignore');
-    const fileArgs = files.map(f => `"${f}"`).join(' ');
-    const eslintCommand = `"${eslintBin}" --no-eslintrc --config "${configPath}" --ignore-path "${ignorePath}" --format json --no-error-on-unmatched-pattern -- ${fileArgs}`;
-
     let stdout = '';
     try {
-      stdout = execSync(eslintCommand, {
+      stdout = execFileSync(eslintBin, ['--no-eslintrc', '--config', configPath, '--ignore-path', ignorePath, '--format', 'json', '--no-error-on-unmatched-pattern', '--', ...files], {
         encoding: 'utf8',
         cwd: this.baseDir,
         maxBuffer: 32 * 1024 * 1024,
@@ -1248,7 +1209,7 @@ class ModuleLinter {
    * already exist from the repo root are returned unchanged; bare scope-relative
    * paths (e.g. `custom/<group>/...`, `<theme>/...`) are probed under the standard
    * roots (`web/modules`, `web/themes`, `web/profiles`) and rewritten to the
-   * first match. Memoized — the same path recurs across many findings.
+   * first match. Memoized - the same path recurs across many findings.
    */
   normalizeRepoPath(p) {
     if (!p || typeof p !== 'string') return p;
@@ -1272,10 +1233,10 @@ class ModuleLinter {
   async lintSCSSFiles(files, context) {
     const results = [];
     const stylelintMod = await loadOptionalTool('stylelint');
-    if (!stylelintMod) return results; // stylelint not installed — skip CSS/SCSS lane
+    if (!stylelintMod) return results; // stylelint not installed - skip CSS/SCSS lane
     const stylelint = stylelintMod.default;
     const isCI = process.env.CI === 'true' || process.env.GITHUB_ACTIONS === 'true';
-    // tests/ — where node_modules (and the stylelint config's plugins) resolve.
+    // tests/ - where node_modules (and the stylelint config's plugins) resolve.
     const cwd = path.join(__dirname, '..');
     const configFile = path.join(__dirname, 'linting', '.stylelintrc.json');
 
@@ -1376,8 +1337,11 @@ class ModuleLinter {
     };
 
     try {
-      // Lint PHP files
-      const phpFiles = this.findFiles(profile.path, ['.php', '.profile', '.install']);
+      // Lint PHP files, including PHPUnit test classes under tests/src.
+      const phpFiles = [
+        ...this.findFiles(profile.path, ['.php', '.profile', '.install']),
+        ...this.findTestClassFiles(profile.path),
+      ];
       if (phpFiles.length > 0) {
         console.log(`  PHP files: ${phpFiles.length}`);
         profileResults.files.push(...await this.lintPHPFiles(phpFiles, profile));
@@ -1422,8 +1386,11 @@ class ModuleLinter {
     };
 
     try {
-      // Lint PHP files
-      const phpFiles = this.findFiles(module.path, ['.php', '.module', '.inc', '.install', '.test', '.profile', '.theme']);
+      // Lint PHP files, including PHPUnit test classes under tests/src.
+      const phpFiles = [
+        ...this.findFiles(module.path, ['.php', '.module', '.inc', '.install', '.test', '.profile', '.theme']),
+        ...this.findTestClassFiles(module.path),
+      ];
       if (phpFiles.length > 0) {
         console.log(`  PHP files: ${phpFiles.length}`);
         moduleResults.files.push(...await this.lintPHPFiles(phpFiles, module));
@@ -1504,7 +1471,7 @@ class ModuleLinter {
   }
 
   /**
-   * Lint custom PHP that lives outside web/{modules,themes,profiles} — drush
+   * Lint custom PHP that lives outside web/{modules,themes,profiles} - drush
    * commands, composer scripts, and any other folders a site declares in
    * custom-paths.json (extras.custom_drush + extras.custom_php_other). Globs
    * are resolved with fast-glob (existing files only) and honour the config's
@@ -1586,6 +1553,12 @@ class ModuleLinter {
   findFiles(dir, extensions) {
     const files = [];
 
+    // Skip vendored/generated trees inside custom code: a module-local
+    // node_modules (e.g. a CKEditor plugin build) is not site code, and
+    // scanning it inflates counts and findings on local checkouts where
+    // those gitignored directories exist.
+    const skipDirs = new Set(['tests', 'bootstrap', 'node_modules', 'vendor']);
+
     function scan(directory) {
       const items = fs.readdirSync(directory);
 
@@ -1593,7 +1566,7 @@ class ModuleLinter {
         const itemPath = path.join(directory, item);
         const stat = fs.statSync(itemPath);
 
-        if (stat.isDirectory() && item !== 'tests' && !item.startsWith('Test') && !itemPath.includes('bootstrap')) {
+        if (stat.isDirectory() && !skipDirs.has(item) && !item.startsWith('Test')) {
           scan(itemPath);
         } else if (stat.isFile()) {
           const ext = path.extname(item);
@@ -1605,6 +1578,35 @@ class ModuleLinter {
     }
 
     scan(dir);
+    return files;
+  }
+
+  /**
+   * Collect test-class .php files under a component's tests/src for PHPCS.
+   *
+   * findFiles() prunes all `tests/`, keeping fixtures out of the broad lanes;
+   * test classes live in tests/src and still need Drupal coding standards.
+   */
+  findTestClassFiles(dir) {
+    const testSrc = path.join(dir, 'tests', 'src');
+    if (!fs.existsSync(testSrc)) {
+      return [];
+    }
+
+    const files = [];
+    function scan(directory) {
+      for (const item of fs.readdirSync(directory)) {
+        const itemPath = path.join(directory, item);
+        const stat = fs.statSync(itemPath);
+        if (stat.isDirectory()) {
+          scan(itemPath);
+        } else if (stat.isFile() && path.extname(item) === '.php') {
+          files.push(itemPath);
+        }
+      }
+    }
+
+    scan(testSrc);
     return files;
   }
 
@@ -1634,12 +1636,9 @@ class ModuleLinter {
 
     const standardPath = path.join(this.lintingDir, 'static-analysis', 'phpcs.xml.dist');
     const phpcsBin = path.join(this.baseDir, 'vendor/bin/phpcs');
-    const fileArgs = files.map(f => `"${f}"`).join(' ');
-    const phpcsCommand = `"${phpcsBin}" --standard="${standardPath}" --report=json -- ${fileArgs}`;
-
     let stdout = '';
     try {
-      stdout = execSync(phpcsCommand, {
+      stdout = execFileSync(phpcsBin, [`--standard=${standardPath}`, '--report=json', '--', ...files], {
         encoding: 'utf8',
         cwd: this.baseDir,
         maxBuffer: 32 * 1024 * 1024,
@@ -1717,7 +1716,7 @@ class ModuleLinter {
   /**
    * Run PHPStan once over every custom path declared in
    * tests/code-quality/static-analysis/phpstan.neon. Only populates this.phpstanFindings for
-   * the unified test-suite-findings.json — PHPStan output is intentionally absent
+   * the unified test-suite-findings.json - PHPStan output is intentionally absent
    * from the per-module HTML report (it analyses cross-module).
    */
   runPhpStan() {
@@ -1778,7 +1777,7 @@ class ModuleLinter {
    */
   checkCoreVersionCompat(scopes) {
     const NEXT_MAJOR = '11';
-    // Subsystems removed in the next major with no in-place path — a dependency
+    // Subsystems removed in the next major with no in-place path - a dependency
     // on these is a *structural* blocker (rewrite required), not just a version
     // bump. Extend as more removals land (this list is the high-signal subset).
     const REMOVED_DEPS = new Set(['ckeditor']); // CKEditor 4 (removed in D11)
@@ -1805,7 +1804,7 @@ class ModuleLinter {
             this.deprecationFindings.push({
               rule_id: 'compat.removedDependency',
               severity: 'serious',
-              message: `${base} depends on "${name}", which is removed in Drupal ${NEXT_MAJOR} — port off it (e.g. CKEditor 4 → CKEditor 5) before the upgrade.`,
+              message: `${base} depends on "${name}", which is removed in Drupal ${NEXT_MAJOR}. Port off it (e.g. CKEditor 4 → CKEditor 5) before the upgrade.`,
               path: relPath,
             });
           }
@@ -1822,7 +1821,7 @@ class ModuleLinter {
             this.deprecationFindings.push({
               rule_id: 'compat.coreVersionRequirement',
               severity: 'minor',
-              message: `${base} declares core_version_requirement "${req}" — widen to include ^${NEXT_MAJOR} once verified on D${NEXT_MAJOR}.`,
+              message: `${base} declares core_version_requirement "${req}". Widen to include ^${NEXT_MAJOR} once verified on D${NEXT_MAJOR}.`,
               path: relPath,
             });
           }
@@ -1833,7 +1832,7 @@ class ModuleLinter {
     const compat = this.deprecationFindings.filter(f => String(f.rule_id).startsWith('compat.'));
     if (compat.length) {
       const hard = compat.filter(f => f.rule_id === 'compat.removedDependency').length;
-      console.log(`  Next-major compat: ${compat.length} finding(s)${hard ? ` — ${hard} hard blocker(s) (removed subsystem)` : ''}`);
+      console.log(`  Next-major compat: ${compat.length} finding(s)${hard ? ` - ${hard} hard blocker(s) (removed subsystem)` : ''}`);
     }
   }
 
@@ -1915,9 +1914,9 @@ class ModuleLinter {
    * Config-install hygiene. Configuration shipped in a module/profile's
    * `config/install` is imported into every downstream site, so it must not
    * carry site-specific metadata:
-   *   - `uuid`  — regenerated on import; a hard-coded value is forced onto the
+   *   - `uuid`  - regenerated on import; a hard-coded value is forced onto the
    *               target entity and causes cross-site drift / import conflicts.
-   *   - `_core` — holds `default_config_hash`, a per-site value that should be
+   *   - `_core` - holds `default_config_hash`, a per-site value that should be
    *               stripped before exporting config for distribution.
    * Both are unambiguous defects (no false positives), which matters here since
    * this upstream ships config to the whole fleet.
@@ -1944,7 +1943,7 @@ class ModuleLinter {
           this.configFindings.push({
             rule_id: 'config.uuidInInstall',
             severity: 'moderate',
-            message: 'Shipped config should not contain a uuid — it is regenerated on import, so a hard-coded value causes cross-site drift and import conflicts.',
+            message: 'Shipped config should not contain a uuid; it is regenerated on import, so a hard-coded value causes cross-site drift and import conflicts.',
             path: rel,
             line: lineOf(/^uuid:/m),
           });
@@ -1953,7 +1952,7 @@ class ModuleLinter {
           this.configFindings.push({
             rule_id: 'config.coreMetadataInInstall',
             severity: 'minor',
-            message: 'Shipped config should not contain _core (default_config_hash) — strip it before exporting config for distribution.',
+            message: 'Shipped config should not contain _core (default_config_hash); strip it before exporting config for distribution.',
             path: rel,
             line: lineOf(/^_core:/m),
           });
@@ -1970,7 +1969,7 @@ class ModuleLinter {
   /**
    * Permission baseline. A custom permission that grants security-sensitive
    * access ("administer …", "bypass …") should declare `restrict access: true`
-   * so Drupal warns admins before granting it — core's own convention. Flags
+   * so Drupal warns admins before granting it - core's own convention. Flags
    * such permissions that omit the flag. The heuristic is intentionally tight
    * (administer / bypass) to stay low-noise; ordinary view/edit permissions are
    * not flagged. Parsed via js-yaml so `true`/`TRUE`/`True` all read correctly.
@@ -1992,7 +1991,7 @@ class ModuleLinter {
         if (!doc || typeof doc !== 'object') continue;
         const rel = path.relative(this.baseDir, file);
         for (const [name, def] of Object.entries(doc)) {
-          // `permission_callbacks` defines permissions dynamically in PHP — can't
+          // `permission_callbacks` defines permissions dynamically in PHP - can't
           // inspect their `restrict access` statically, so skip it.
           if (name === 'permission_callbacks') continue;
           if (!def || typeof def !== 'object') continue;
@@ -2177,7 +2176,7 @@ class ModuleLinter {
           } else if (docroot.test(p) && !p.includes('{{')) {
             resolved = path.join(webRoot, p.replace(/^\/+/, ''));
           } else {
-            continue; // relative / dynamic / external — not statically checkable
+            continue; // relative / dynamic / external - not statically checkable
           }
 
           checked++;
@@ -2202,13 +2201,19 @@ class ModuleLinter {
 
   /**
    * Run cspell once over all upstream-authored prose / source. Findings
-   * land on this.cspellFindings only — cspell's per-file output isn't
+   * land on this.cspellFindings only - cspell's per-file output isn't
    * folded into the per-module HTML report (it's glob-driven, not
    * scope-driven, and would clutter the legacy view).
    */
   runCspell() {
     const configPath = path.join(this.lintingDir, 'spelling', '.cspell.json');
     if (!fs.existsSync(configPath)) return;
+    // The per-site dictionary is site-owned and untracked upstream. cspell
+    // errors on a missing dictionary file, so create an empty one if needed.
+    const siteWordsPath = path.join(this.lintingDir, 'spelling', '.cspell', 'site-words.txt');
+    if (!fs.existsSync(siteWordsPath)) {
+      fs.writeFileSync(siteWordsPath, '');
+    }
     const cspellBin = this.findCspellBin();
     if (!cspellBin) {
       console.warn('⚠️  cspell not installed (run `npm install` in tests/). Skipping spell-check.');
@@ -2216,9 +2221,8 @@ class ModuleLinter {
     }
     console.log(`Running cspell…`);
 
-    // Globs mirror tests/package.json#scripts.lint:cspell. Keep them in
-    // sync so direct CLI usage produces the same report as the
-    // orchestrator pass.
+    // Upstream-authored prose and source surfaces covered by the
+    // spell-check pass.
     const globs = [
       'web/modules/custom/**/*.{php,module,inc,install,info.yml,md,twig}',
       'web/themes/**/*.{twig,scss,md}',
@@ -2327,7 +2331,7 @@ class ModuleLinter {
         const parsed = JSON.parse(auditOutput);
         this.parseComposerAudit(parsed);
       } catch (_e) {
-        // Audit output wasn't JSON — likely a transport error; skip.
+        // Audit output wasn't JSON - likely a transport error; skip.
       }
     }
 
@@ -2448,7 +2452,7 @@ class ModuleLinter {
         issues: []
       };
 
-      // Validate YAML syntax in-process with js-yaml — the same engine the
+      // Validate YAML syntax in-process with js-yaml - the same engine the
       // `yaml-lint` CLI wraps. This replaces a per-file `npx yaml-lint`
       // subprocess (process + npx-resolution overhead spawned once per YAML
       // file), which was the single largest cost in the lint run given the
@@ -2545,13 +2549,19 @@ class ModuleLinter {
     const results = [];
     const isCI = process.env.CI === 'true' || process.env.GITHUB_ACTIONS === 'true';
 
+    // Resolve the local binary explicitly; skip-with-warning if it's absent
+    // so a missing dev dependency can't book a false code "ERROR".
+    const ecBin = path.join(__dirname, '..', 'node_modules', '.bin', 'editorconfig-checker');
+    if (!fs.existsSync(ecBin)) {
+      if (isCI) console.log('⚠️ editorconfig-checker not installed; skipping EditorConfig lane.');
+      return results;
+    }
+
     try {
-      // Run EditorConfig checker
-      const editorconfigCommand = `npx editorconfig-checker "${dir}"`;
       if (isCI) {
         console.log(`Running EditorConfig check on: ${dir}`);
       }
-      execSync(editorconfigCommand, {
+      execFileSync(ecBin, [dir], {
         encoding: 'utf8',
         cwd: path.join(__dirname, '..')
       });
@@ -2609,17 +2619,18 @@ class ModuleLinter {
           console.log(`⚠️ EditorConfig found ${totalWarnings} issues in ${results.length} files in: ${dir}`);
         }
       } else {
-        // Tool execution failed
-        const errorMsg = `EditorConfig check failed: ${error.message}`;
+        // Tool ran but produced no parseable output: a tool problem, not a
+        // code defect, so warn instead of flipping the exit code with an ERROR.
+        const errorMsg = `EditorConfig check could not run: ${error.message}`;
         results.push({
           file: 'EditorConfig',
           type: 'editorconfig',
-          errors: 1,
-          warnings: 0,
-          issues: [{ severity: 'ERROR', message: errorMsg }]
+          errors: 0,
+          warnings: 1,
+          issues: [{ severity: 'WARNING', message: errorMsg }]
         });
         if (isCI) {
-          console.log(`❌ EditorConfig tool failed: ${errorMsg}`);
+          console.log(`⚠️ EditorConfig tool problem: ${errorMsg}`);
         }
       }
     }
@@ -2641,11 +2652,25 @@ class ModuleLinter {
   /**
    * Generate HTML summary report
    */
+  // Run one project-wide lane in isolation. A throw is recorded in
+  // this.laneErrors so the report shows "lane error (not run)", not "0 findings".
+  runLane(key, label, fn) {
+    try {
+      fn();
+    } catch (err) {
+      this.laneErrors[key] = err.message || String(err);
+      console.warn(`⚠️  ${label} lane failed: ${err.message}`);
+    }
+  }
+
   generateSummaryReport() {
     const duration = Date.now() - this.results.startTime;
     const reportPath = path.join(this.reportsDir, 'lint-report.html');
+    const shownTotals = this.shownCounts(
+      [...this.results.modules, ...this.results.themes, ...this.results.profiles].flatMap(s => s.files),
+    );
 
-    // Surface banner — same shape the unified report uses, so reviewers
+    // Surface banner - same shape the unified report uses, so reviewers
     // see the same context (Local / CI · multidev) on both views.
     const surface = buildSurface();
     const surfaceLabels = {
@@ -2664,59 +2689,95 @@ class ModuleLinter {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Linting Report - ${this.branding.report_title_prefix}</title>
     <style>
-        :focus-visible { outline: 3px solid #0b5cab; outline-offset: 2px; }
+        :root {
+          --brand-primary: #003660; --brand-primary-ink: #ffffff;
+          --brand-accent: #febc11; --brand-accent-ink: #2a2100;
+          --color-bg: #eef2f6; --color-surface: #ffffff; --color-surface-2: #f5f8fb;
+          --color-text: #172431; --color-text-muted: #5a6b7b;
+          --color-border: #d6dee7; --color-border-strong: #b4c1cd;
+          --color-accent: var(--brand-primary); --color-accent-bg: #e6eef6;
+          --severity-critical: #9b1c15; --severity-serious: #8b3409; --severity-moderate: #6a4900; --severity-minor: #1f5c78; --severity-pass: #1a6731;
+          --severity-critical-bg: #fdecea; --severity-serious-bg: #fceee0; --severity-moderate-bg: #fdf3d4; --severity-minor-bg: #e3f0f6; --severity-pass-bg: #e3f3e7;
+          --font-sans: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+          --font-mono: ui-monospace, "SF Mono", "Cascadia Code", Menlo, Consolas, monospace;
+          --radius: 5px; --radius-card: 4px; --radius-row: 3px;
+          --shadow: 0 1px 2px rgba(16,33,51,0.05), 0 2px 6px rgba(16,33,51,0.05);
+          --shadow-card: 0 1px 3px rgba(16,33,51,0.06), 0 8px 28px rgba(16,33,51,0.08);
+          --max-width: 1120px;
+        }
+        @media (prefers-color-scheme: dark) {
+          :root {
+            --color-bg: #0e1922; --color-surface: #16222e; --color-surface-2: #1c2b38;
+            --color-text: #e6edf3; --color-text-muted: #9db0c0;
+            --color-border: #2a3a48; --color-border-strong: #3c4d5d;
+            --color-accent: #7fb2e3; --color-accent-bg: #16303f;
+            --severity-critical: #ffa79f; --severity-serious: #f2b183; --severity-moderate: #e4c352; --severity-minor: #8fc7e2; --severity-pass: #82d3a0;
+            --severity-critical-bg: #38201d; --severity-serious-bg: #33271a; --severity-moderate-bg: #32301a; --severity-minor-bg: #13303c; --severity-pass-bg: #163127;
+            --shadow: 0 1px 2px rgba(0,0,0,0.4), 0 2px 8px rgba(0,0,0,0.35);
+            --shadow-card: 0 1px 3px rgba(0,0,0,0.5), 0 10px 30px rgba(0,0,0,0.45);
+          }
+        }
+        * { box-sizing: border-box; }
+        :focus-visible { outline: 3px solid var(--color-accent); outline-offset: 2px; }
         .skip-link {
           position: absolute; left: -9999px; top: 0;
-          background: #0b5cab; color: #fff;
+          background: var(--brand-primary); color: #fff;
           padding: 8px 12px; z-index: 1000; text-decoration: none;
-          border-radius: 4px;
+          border-radius: var(--radius-card);
         }
         .skip-link:focus { left: 8px; top: 8px; }
-        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; margin: 0; padding: 20px; background: #f5f5f5; color: #1d2330; }
-        .container { max-width: 1200px; margin: 0 auto; background: white; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
-        .header { padding: 30px; border-radius: 8px 8px 0 0; border-bottom: 1px solid #eee; }
-        .header h1 { margin: 0 0 4px; font-size: 1.75em; line-height: 1.25; color: #1d2330; }
-        .header .meta { color: #5f6b7a; font-size: 0.9em; }
+        body { font-family: var(--font-sans); margin: 0; padding: 0 0 8px; background: var(--color-bg); color: var(--color-text); line-height: 1.5; -webkit-font-smoothing: antialiased; }
+        code { font-family: var(--font-mono); overflow-wrap: anywhere; }
+
+        /* Full-bleed navy masthead */
+        .site-masthead { background: var(--brand-primary); color: var(--brand-primary-ink); padding: 30px 20px 56px; }
+        .masthead-inner { width: min(100% - 32px, var(--max-width)); margin-inline: auto; }
+        .site-masthead h1 { margin: 12px 0 6px; font-size: clamp(1.5rem, 1rem + 2.2vw, 2.1rem); line-height: 1.2; font-weight: 750; letter-spacing: -0.015em; color: #fff; }
+        .site-masthead .meta { margin: 0; color: rgba(255,255,255,0.72); font-size: 0.875rem; }
         .surface-banner {
-          display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
-          background: #e8f0fb; color: #0b5cab;
-          padding: 8px 12px; border-radius: 6px;
-          font-size: 0.875em; margin-bottom: 16px;
-          border: 1px solid #c9dcf2;
+          display: inline-flex; flex-wrap: wrap; gap: 8px; align-items: center;
+          background: rgba(255,255,255,0.12); color: #fff;
+          padding: 6px 14px; border-radius: 5px;
+          font-size: 0.8125rem;
+          border: 1px solid rgba(255,255,255,0.22);
         }
-        .surface-banner strong { font-weight: 600; }
+        .surface-banner strong { font-weight: 700; color: var(--brand-accent); }
         .surface-banner .surface-url {
-          font-family: ui-monospace, "SF Mono", Menlo, monospace;
-          font-size: 0.8125em;
+          font-family: var(--font-mono);
+          font-size: 0.78rem; color: #fff; opacity: 0.92; overflow-wrap: anywhere;
         }
-        /* Two explicit rows: scan counts above, issue counts below — keeps
+
+        /* White card pulled up to overlap the masthead */
+        .container { width: min(100% - 32px, var(--max-width)); margin: -32px auto 0; position: relative; z-index: 1; background: var(--color-surface); border-radius: var(--radius); box-shadow: var(--shadow-card); }
+
+        /* Two explicit rows: scan counts above, issue counts below - keeps
          * Errors/Warnings visually grouped and prevents Errors from wrapping
          * to a different row than Warnings at any viewport width. */
-        .summary { padding: 30px; border-bottom: 1px solid #eee; }
+        .summary { padding: 30px; border-bottom: 1px solid var(--color-border); }
         .summary-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; }
         .summary-row + .summary-row { margin-top: 20px; }
-        .metric { text-align: center; padding: 20px; border-radius: 8px; }
-        .metric.success { background: #d4edda; color: #155724; }
-        .metric.warning { background: #fff3cd; color: #856404; }
-        .metric.error { background: #f8d7da; color: #721c24; }
+        .metric { text-align: center; padding: 20px; border-radius: var(--radius-card); border: 1px solid var(--color-border); }
+        .metric.success { background: var(--severity-pass-bg); border-color: var(--severity-pass); color: var(--severity-pass); }
+        .metric.warning { background: var(--severity-moderate-bg); border-color: var(--severity-moderate); color: var(--severity-moderate); }
+        .metric.error { background: var(--severity-critical-bg); border-color: var(--severity-critical); color: var(--severity-critical); }
         /* Scan counts are neutral context, not status. Keep them quiet so
          * Errors/Warnings tiles stand out as the actionable signal. */
-        .metric.info { background: #f8f9fa; color: #495057; border: 1px solid #dee2e6; }
+        .metric.info { background: var(--color-surface); color: var(--color-text-muted); border: 1px solid var(--color-border); }
         .metric h3 { margin: 0 0 10px 0; font-size: 2em; }
         .metric p { margin: 0; font-weight: 500; }
         .modules { padding: 30px; }
         .toolbar { display: flex; gap: 10px; margin-bottom: 20px; }
-        .toolbar button { padding: 6px 14px; border: 1px solid #dee2e6; border-radius: 4px; background: #f8f9fa; cursor: pointer; font-size: 0.85em; color: #333; }
-        .toolbar button:hover { background: #e9ecef; }
-        .module { margin-bottom: 30px; border: 1px solid #dee2e6; border-radius: 8px; overflow: hidden; }
+        .toolbar button { padding: 6px 14px; border: 1px solid var(--color-border-strong); border-radius: var(--radius-card); background: var(--color-surface); cursor: pointer; font: inherit; font-size: 0.85em; color: var(--color-text-muted); }
+        .toolbar button:hover { background: var(--color-bg); border-color: var(--color-accent); color: var(--color-accent); }
+        .module { margin-bottom: 30px; border: 1px solid var(--color-border); border-radius: var(--radius-row); overflow: hidden; }
         /* Hide the native <details> disclosure triangle so the .disclosure
          * span below is the single visual indicator. Summary still gets
          * keyboard focus and announces expanded/collapsed state to AT. */
         .module > summary, .file > summary { list-style: none; }
         .module > summary::-webkit-details-marker,
         .file > summary::-webkit-details-marker { display: none; }
-        .module-header { background: #f8f9fa; padding: 15px 20px; border-bottom: 1px solid #dee2e6; display: flex; flex-wrap: wrap; gap: 12px; justify-content: space-between; align-items: center; cursor: pointer; user-select: none; min-height: 44px; }
-        .module-header:hover { background: #e9ecef; }
+        .module-header { background: var(--color-surface-2); padding: 15px 20px; border-bottom: 1px solid var(--color-border); display: flex; flex-wrap: wrap; gap: 12px; justify-content: space-between; align-items: center; cursor: pointer; user-select: none; min-height: 44px; }
+        .module-header:hover { background: var(--color-bg); }
         /* +/- indicator rendered as a real <span> so flex layout and
          * cross-browser rendering are predictable. ::before swaps the
          * glyph based on the parent <details>[open] state. min-width
@@ -2724,64 +2785,65 @@ class ModuleLinter {
          * against the indicator at narrow widths or 400% zoom. */
         .disclosure {
           flex: 0 0 auto; min-width: 32px;
-          font-size: 1.4em; font-weight: bold; color: #0b5cab;
+          font-size: 1.4em; font-weight: bold; color: var(--color-accent);
           line-height: 1; text-align: center;
         }
         .disclosure::before { content: "+"; }
         details[open] > summary > .disclosure::before { content: "−"; }
-        .module-name { margin: 0; font-size: 1.2em; color: #333; }
+        .module-name { margin: 0; font-size: 1.2em; color: var(--color-text); }
         .module-stats { display: flex; flex-wrap: wrap; gap: 8px 15px; align-items: center; }
         .stat { font-size: 0.9em; }
-        .stat.error { color: #b3001a; }
-        .stat.warning { color: #856404; }
-        .stat.success { color: #1e7e34; }
+        .stat.error { color: var(--severity-critical); }
+        .stat.warning { color: var(--severity-moderate); }
+        .stat.success { color: var(--severity-pass); }
         .metric-value { font-size: 2em; font-weight: bold; margin: 0 0 10px 0; }
         .visually-hidden { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); border: 0; }
         .files { padding: 0; }
-        .file { border-bottom: 1px solid #f0f0f0; }
+        .file { border-bottom: 1px solid var(--color-border); }
         .file:last-child { border-bottom: none; }
-        .file-header { padding: 12px 20px; background: #f8f9fa; cursor: pointer; display: flex; flex-wrap: wrap; gap: 8px 12px; justify-content: space-between; align-items: center; min-height: 44px; }
-        details > .file-header:hover { background: #eef1f4; }
+        .file-header { padding: 12px 20px; background: var(--color-surface-2); cursor: pointer; display: flex; flex-wrap: wrap; gap: 8px 12px; justify-content: space-between; align-items: center; min-height: 44px; }
+        details > .file-header:hover { background: var(--color-bg); }
         /* Clean files never expand, so don't show a clickable cursor. */
         .file--clean > .file-header { cursor: default; }
-        .file-name { margin: 0; font-family: monospace; font-size: 0.9em; word-break: break-all; }
+        .file-name { margin: 0; font-family: var(--font-mono); font-size: 0.9em; word-break: break-all; }
         .file-stats { display: flex; flex-wrap: wrap; gap: 8px 10px; font-size: 0.8em; align-items: center; }
-        .issues { background: #f8f9fa; }
-        .issue { padding: 8px 20px 8px 40px; border-left: 3px solid; margin: 0; }
-        .issue.error { border-left-color: #dc3545; background: #fff5f5; }
-        .issue.warning { border-left-color: #ffc107; background: #fffbf0; }
-        .issue-location { font-family: monospace; font-size: 0.8em; color: #666; margin-bottom: 2px; }
-        .footer { text-align: center; padding: 20px; color: #666; border-top: 1px solid #eee; }
-        .footer a { color: #007cba; text-decoration: none; }
-        .footer a:hover { text-decoration: underline; }
-        /* Reflow at narrow viewports and 400% zoom — keeps the +/-
+        .issues { background: var(--color-surface-2); }
+        /* Severity is conveyed by a tinted background, not a colored left border. */
+        .issue { padding: 8px 20px 8px 40px; margin: 0; border-bottom: 1px solid var(--color-border); }
+        .issue:last-child { border-bottom: none; }
+        .issue.error { background: var(--severity-critical-bg); }
+        .issue.warning { background: var(--severity-moderate-bg); }
+        .issue-location { font-family: var(--font-mono); font-size: 0.8em; color: var(--color-text-muted); margin-bottom: 2px; }
+        .site-footer { width: min(100% - 32px, var(--max-width)); margin: 32px auto 0; padding-top: 18px; border-top: 1px solid var(--color-border); color: var(--color-text-muted); font-size: 0.8125rem; text-align: center; }
+        .site-footer a { color: var(--color-accent); text-decoration: none; }
+        .site-footer a:hover { text-decoration: underline; }
+        /* Reflow at narrow viewports and 400% zoom - keeps the +/-
          * indicator and stats readable without horizontal scrolling. */
         @media (max-width: 640px) {
-          body { padding: 8px; }
           .modules, .project-wide, .a11y-note { margin: 16px 12px; padding: 12px; }
           .module-header, .file-header { padding: 12px 14px; }
           .module-name { font-size: 1.05em; }
           .module-stats, .file-stats { width: 100%; }
         }
-        .a11y-note { margin: 20px 30px; padding: 16px 20px; background: #e8f4fd; border: 1px solid #b8daff; border-radius: 6px; font-size: 0.9em; line-height: 1.5; color: #004085; }
+        .a11y-note { margin: 20px 30px; padding: 16px 20px; background: var(--color-accent-bg); border: 1px solid var(--color-border); border-radius: var(--radius-card); font-size: 0.9em; line-height: 1.5; color: var(--color-text); }
         .a11y-note strong { display: block; margin-bottom: 4px; }
-        .a11y-note code { background: #d1ecf1; padding: 1px 5px; border-radius: 3px; font-size: 0.95em; }
-        .project-wide { margin: 20px 30px; padding: 24px; background: white; border: 1px solid #dee2e6; border-radius: 6px; }
+        .a11y-note code { background: var(--color-surface-2); padding: 1px 5px; border-radius: 3px; font-size: 0.95em; }
+        .project-wide { margin: 20px 30px; padding: 24px; background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius-card); }
         .project-wide h2 { margin: 0 0 8px; font-size: 1.4em; }
-        .project-wide .hint { color: #6c757d; font-size: 0.9em; }
-        .tool-group { border: 1px solid #dee2e6; border-radius: 4px; margin-bottom: 8px; }
+        .project-wide .hint { color: var(--color-text-muted); font-size: 0.9em; }
+        .tool-group { border: 1px solid var(--color-border); border-radius: var(--radius-card); margin-bottom: 8px; }
         .tool-group > summary { padding: 10px 14px; cursor: pointer; font-weight: 500; font-size: 0.95em; }
-        .tool-group > summary:hover { background: #f8f9fa; }
+        .tool-group > summary:hover { background: var(--color-bg); }
         .project-wide-list { list-style: none; padding: 0 14px 12px; margin: 0; max-height: 360px; overflow-y: auto; }
-        .project-wide-list li { padding: 6px 4px; border-bottom: 1px solid #f0f0f0; font-size: 0.85em; line-height: 1.5; }
+        .project-wide-list li { padding: 6px 4px; border-bottom: 1px solid var(--color-border); font-size: 0.85em; line-height: 1.5; }
         .project-wide-list li:last-child { border-bottom: none; }
-        .project-wide-list code { background: #f5f5f5; padding: 1px 5px; border-radius: 3px; font-size: 0.95em; }
+        .project-wide-list code { background: var(--color-surface-2); padding: 1px 5px; border-radius: 3px; font-size: 0.95em; }
     </style>
 </head>
 <body>
     <a href="#main" class="skip-link">Skip to main content</a>
-    <main id="main" class="container">
-        <header class="header">
+    <header class="site-masthead">
+        <div class="masthead-inner">
             <div class="surface-banner" role="status">
                 <strong>${surfaceText}</strong>
                 ${surfaceUrl ? `<span class="surface-url">${this.escapeHtml(surfaceUrl)}</span>` : ''}
@@ -2791,7 +2853,9 @@ class ModuleLinter {
             <div class="meta">
                 Generated: ${new Date().toLocaleString()} · Duration: ${this.formatDuration(duration)}
             </div>
-        </header>
+        </div>
+    </header>
+    <main id="main" class="container">
 
         <section aria-labelledby="summary-heading" class="summary">
             <h2 id="summary-heading" class="visually-hidden">Summary</h2>
@@ -2814,12 +2878,12 @@ class ModuleLinter {
                 </div>
             </div>
             <div class="summary-row summary-issues">
-                <div class="metric ${this.results.errors > 0 ? 'error' : 'success'}">
-                    <p class="metric-value">${this.results.errors}</p>
+                <div class="metric ${shownTotals.errors > 0 ? 'error' : 'success'}">
+                    <p class="metric-value">${shownTotals.errors}</p>
                     <p>Errors Found</p>
                 </div>
-                <div class="metric ${this.results.warnings > 0 ? 'warning' : 'success'}">
-                    <p class="metric-value">${this.results.warnings}</p>
+                <div class="metric ${shownTotals.warnings > 0 ? 'warning' : 'success'}">
+                    <p class="metric-value">${shownTotals.warnings}</p>
                     <p>Warnings Found</p>
                 </div>
             </div>
@@ -2827,7 +2891,7 @@ class ModuleLinter {
 
         <aside class="a11y-note" aria-label="Accessibility coverage note">
             <strong>Accessibility note</strong>
-            Includes static a11y checks for CSS/SCSS (<code>a11y/*</code>) and Twig (<code>[a11y]</code>). Static analysis misses runtime issues — color contrast, dynamic ARIA, keyboard flow. Run <code>drush utest:all</code> for the full audit.
+            Includes static a11y checks for CSS/SCSS (<code>a11y/*</code>) and Twig (<code>[a11y]</code>). Static analysis misses runtime issues: color contrast, dynamic ARIA, keyboard flow. Run <code>drush utest:all</code> for the full audit.
         </aside>
 
         ${this.renderProjectWideFindings()}
@@ -2843,8 +2907,8 @@ class ModuleLinter {
             ${this.results.profiles.map(profile => this.renderProfile(profile)).join('')}
         </section>
 
-        ${process.env.CI !== 'true' && process.env.GITHUB_ACTIONS !== 'true' ? '<footer class="footer"><p><a href="../index.html">← Back to all reports</a></p></footer>' : ''}
     </main>
+    ${process.env.UTEST_ALL === '1' ? '<footer class="site-footer"><a href="../index.html">← Back to all reports</a></footer>' : ''}
 
     <script>
         // Native <details> handles its own click-to-toggle; the only thing
@@ -2877,27 +2941,27 @@ class ModuleLinter {
       {
         label: 'PHPStan (static analysis)',
         findings: this.phpstanFindings || [],
-        formatter: (f) => `<code>${this.escapeHtml(f.rule_id || '?')}</code> at <code>${this.escapeHtml(f.path || '')}${f.line ? ':' + f.line : ''}</code> — ${this.escapeHtml(f.message || '')}`,
+        formatter: (f) => `<code>${this.escapeHtml(f.rule_id || '?')}</code> at <code>${this.escapeHtml(f.path || '')}${f.line ? ':' + f.line : ''}</code> · ${this.escapeHtml(f.message || '')}`,
       },
       {
         label: 'Drupal deprecations (next-major readiness)',
         findings: this.deprecationFindings || [],
-        formatter: (f) => `<code>${this.escapeHtml(f.rule_id || '?')}</code> at <code>${this.escapeHtml(f.path || '')}${f.line ? ':' + f.line : ''}</code> — ${this.escapeHtml(f.message || '')}`,
+        formatter: (f) => `<code>${this.escapeHtml(f.rule_id || '?')}</code> at <code>${this.escapeHtml(f.path || '')}${f.line ? ':' + f.line : ''}</code> · ${this.escapeHtml(f.message || '')}`,
       },
       {
         label: 'References (library assets)',
         findings: this.referenceFindings || [],
-        formatter: (f) => `<code>${this.escapeHtml(f.path || '')}${f.line ? ':' + f.line : ''}</code> — ${this.escapeHtml(f.message || '')}`,
+        formatter: (f) => `<code>${this.escapeHtml(f.path || '')}${f.line ? ':' + f.line : ''}</code> · ${this.escapeHtml(f.message || '')}`,
       },
       {
         label: 'Config hygiene (config/install)',
         findings: this.configFindings || [],
-        formatter: (f) => `<code>${this.escapeHtml(f.rule_id || '?')}</code> at <code>${this.escapeHtml(f.path || '')}${f.line ? ':' + f.line : ''}</code> — ${this.escapeHtml(f.message || '')}`,
+        formatter: (f) => `<code>${this.escapeHtml(f.rule_id || '?')}</code> at <code>${this.escapeHtml(f.path || '')}${f.line ? ':' + f.line : ''}</code> · ${this.escapeHtml(f.message || '')}`,
       },
       {
         label: 'Permission baseline (restrict access)',
         findings: this.permissionFindings || [],
-        formatter: (f) => `<code>${this.escapeHtml(f.rule_id || '?')}</code> at <code>${this.escapeHtml(f.path || '')}${f.line ? ':' + f.line : ''}</code> — ${this.escapeHtml(f.message || '')}`,
+        formatter: (f) => `<code>${this.escapeHtml(f.rule_id || '?')}</code> at <code>${this.escapeHtml(f.path || '')}${f.line ? ':' + f.line : ''}</code> · ${this.escapeHtml(f.message || '')}`,
       },
       {
         label: 'cspell (spell-check)',
@@ -2912,26 +2976,45 @@ class ModuleLinter {
         findings: this.composerFindings || [],
         formatter: (f) => {
           const link = f.link ? ` · <a href="${this.escapeHtml(f.link)}">advisory</a>` : '';
-          return `<code>${this.escapeHtml(f.rule_id || '?')}</code> at <code>${this.escapeHtml(f.path || '')}</code> — ${this.escapeHtml(f.message || '')}${link}`;
+          return `<code>${this.escapeHtml(f.rule_id || '?')}</code> at <code>${this.escapeHtml(f.path || '')}</code> · ${this.escapeHtml(f.message || '')}${link}`;
         },
       },
       {
         label: 'markdownlint (Markdown style)',
         findings: this.markdownlintFindings || [],
-        formatter: (f) => `<code>${this.escapeHtml(f.rule_id || '?')}</code> at <code>${this.escapeHtml(f.path || '')}${f.line ? ':' + f.line : ''}</code> — ${this.escapeHtml(f.message || '')}`,
+        formatter: (f) => `<code>${this.escapeHtml(f.rule_id || '?')}</code> at <code>${this.escapeHtml(f.path || '')}${f.line ? ':' + f.line : ''}</code> · ${this.escapeHtml(f.message || '')}`,
       },
       {
         label: 'actionlint (workflow YAML + shellcheck)',
         findings: this.actionlintFindings || [],
-        formatter: (f) => `<code>${this.escapeHtml(f.rule_id || '?')}</code> at <code>${this.escapeHtml(f.path || '')}${f.line ? ':' + f.line : ''}</code> — ${this.escapeHtml(f.message || '')}`,
+        formatter: (f) => `<code>${this.escapeHtml(f.rule_id || '?')}</code> at <code>${this.escapeHtml(f.path || '')}${f.line ? ':' + f.line : ''}</code> · ${this.escapeHtml(f.message || '')}`,
       },
     ];
 
+    // A lane that threw shows a distinct error status, so a crashed lane is
+    // never mistaken for a clean one. Keys match runLane() in the loop.
+    const keyByLabel = {
+      'PHPStan (static analysis)': 'phpstan',
+      'Drupal deprecations (next-major readiness)': 'deprecations',
+      'References (library assets)': 'references',
+      'Config hygiene (config/install)': 'config',
+      'Permission baseline (restrict access)': 'permissions',
+      'cspell (spell-check)': 'cspell',
+      'Composer (manifest + audit)': 'composer',
+      'markdownlint (Markdown style)': 'markdownlint',
+      'actionlint (workflow YAML + shellcheck)': 'actionlint',
+    };
     const groupsHtml = groups.map((g) => {
+      const laneError = this.laneErrors[keyByLabel[g.label]];
+      if (laneError) {
+        const summary = `<summary>${g.label}: <span class="stat error">lane error (not run)</span></summary>`;
+        const body = `<p class="hint" style="padding: 0 20px 12px">This lane did not complete, so it produced no results: ${this.escapeHtml(laneError)}. Treat as not run, not as clean.</p>`;
+        return `<details class="tool-group" open>${summary}${body}</details>`;
+      }
       const count = g.findings.length;
       const summary = count === 0
-        ? `<summary>${g.label} — <span class="stat success">0 findings</span></summary>`
-        : `<summary>${g.label} — <span class="stat warning">${count} ${count === 1 ? 'finding' : 'findings'}</span></summary>`;
+        ? `<summary>${g.label}: <span class="stat success">0 findings</span></summary>`
+        : `<summary>${g.label}: <span class="stat warning">${count} ${count === 1 ? 'finding' : 'findings'}</span></summary>`;
       const body = count === 0
         ? '<p class="hint" style="padding: 0 20px 12px">No findings reported by this tool.</p>'
         : `<ul class="project-wide-list">${g.findings.map((f) => `<li>${g.formatter(f)}</li>`).join('')}</ul>`;
@@ -2949,6 +3032,19 @@ class ModuleLinter {
   /**
    * Render a module's HTML
    */
+  // Counts shown in the report use each finding's real severity, not the
+  // exit-code counters: PHPCS errors are bucketed into result.warnings to stay
+  // report-only, but should still display as errors.
+  shownCounts(files) {
+    let errors = 0, warnings = 0;
+    for (const f of files || []) {
+      for (const i of (f.issues || [])) {
+        if (i.severity === 'ERROR') errors++; else warnings++;
+      }
+    }
+    return { errors, warnings };
+  }
+
   renderModule(module) {
     return this.renderScopeAccordion(module, 'Module');
   }
@@ -2973,13 +3069,14 @@ class ModuleLinter {
    * announces expanded/collapsed state to screen readers without JS.
    */
   renderScopeAccordion(scope, kind) {
+    const c = this.shownCounts(scope.files);
     return `
       <details class="module">
         <summary class="module-header">
           <h3 class="module-name"><span class="visually-hidden">${kind}: </span>${this.escapeHtml(scope.name)}</h3>
           <span class="module-stats">
-            <span class="stat ${scope.errors > 0 ? 'error' : 'success'}">Errors: ${scope.errors}</span>
-            <span class="stat ${scope.warnings > 0 ? 'warning' : 'success'}">Warnings: ${scope.warnings}</span>
+            <span class="stat ${c.errors > 0 ? 'error' : 'success'}">Errors: ${c.errors}</span>
+            <span class="stat ${c.warnings > 0 ? 'warning' : 'success'}">Warnings: ${c.warnings}</span>
             <span class="stat info">${scope.files.length} files</span>
             <span class="stat info">Duration: ${this.formatDuration(scope.duration)}</span>
           </span>
@@ -2998,7 +3095,8 @@ class ModuleLinter {
    * Render a file's HTML
    */
   renderFile(file) {
-    const hasIssues = file.errors > 0 || file.warnings > 0;
+    const c = this.shownCounts([file]);
+    const hasIssues = c.errors > 0 || c.warnings > 0;
 
     if (!hasIssues) {
       return `
@@ -3018,8 +3116,8 @@ class ModuleLinter {
         <summary class="file-header">
           <h4 class="file-name">${this.escapeHtml(file.file)} <span class="file-type">(${this.escapeHtml(file.type.toUpperCase())})</span></h4>
           <span class="file-stats">
-            ${file.errors > 0 ? `<span class="stat error">Errors: ${file.errors}</span>` : ''}
-            ${file.warnings > 0 ? `<span class="stat warning">Warnings: ${file.warnings}</span>` : ''}
+            ${c.errors > 0 ? `<span class="stat error">Errors: ${c.errors}</span>` : ''}
+            ${c.warnings > 0 ? `<span class="stat warning">Warnings: ${c.warnings}</span>` : ''}
           </span>
           <span class="disclosure" aria-hidden="true"></span>
         </summary>
@@ -3044,13 +3142,14 @@ class ModuleLinter {
    * Display results summary
    */
   displayResults() {
+    const shown = this.shownCounts([...this.results.modules, ...this.results.themes, ...this.results.profiles].flatMap(s => s.files));
     console.log('Linting Summary:');
     console.log(`   Modules scanned: ${this.results.modules.length}`);
     console.log(`   Themes scanned: ${this.results.themes.length}`);
     console.log(`   Profiles scanned: ${this.results.profiles.length}`);
     console.log(`   Files checked: ${this.results.totalFiles}`);
-    console.log(`   Total errors: ${this.results.errors}`);
-    console.log(`   Total warnings: ${this.results.warnings}`);
+    console.log(`   Total errors: ${shown.errors}`);
+    console.log(`   Total warnings: ${shown.warnings}`);
     console.log('');
 
     // Display supported file types
@@ -3066,7 +3165,7 @@ class ModuleLinter {
 
     if (this.results.reportPath) {
       // Extract web-relative path from absolute path
-      const webPathMatch = this.results.reportPath.match(/web[\/\\](sites[\/\\]default[\/\\]files[\/\\].+)$/);
+      const webPathMatch = this.results.reportPath.match(/web[/\\](sites[/\\]default[/\\]files[/\\].+)$/);
       const webUrl = webPathMatch ? '/' + webPathMatch[1].replace(/\\/g, '/') : this.results.reportPath;
       console.log('Reports generated:');
       console.log(`   HTML: ${this.results.reportPath}`);
@@ -3085,7 +3184,7 @@ class ModuleLinter {
 
   /**
    * Render a duration in human-friendly form: hours / minutes / seconds.
-   * Sub-second runs collapse to "<1s" — raw milliseconds are too noisy for
+   * Sub-second runs collapse to "<1s" - raw milliseconds are too noisy for
    * the user-facing report and console summary.
    */
   formatDuration(ms) {
@@ -3106,41 +3205,54 @@ const linter = new ModuleLinter();
 
 // Parse command line arguments
 const args = process.argv.slice(2);
-const options = {};
+const options = {
+  modules: [],
+  themes: [],
+  profileTargets: [],
+};
 let targetModule = null;
 let targetTheme = null;
+const optionTypes = {
+  module: 'modules',
+  modules: 'modules',
+  theme: 'themes',
+  themes: 'themes',
+  profile: 'profileTargets',
+  profiles: 'profileTargets',
+};
+
+function printUsageAndExit(message) {
+  if (message) console.error(message);
+  console.error('Supported options:');
+  console.error('  --module <module_name>     Lint one or more modules (comma-separated)');
+  console.error('  --modules <module_names>   Lint one or more modules (comma-separated)');
+  console.error('  --theme <theme_name>       Lint one or more themes (comma-separated)');
+  console.error('  --themes <theme_names>     Lint one or more themes (comma-separated)');
+  console.error('  --profile <profile_name>   Lint one or more profiles (comma-separated)');
+  console.error('  --profiles <profile_names> Lint one or more profiles (comma-separated)');
+  console.error('');
+  console.error('Or use positional arguments for backward compatibility:');
+  console.error('  <module_or_theme_name> [theme_name]');
+  process.exit(1);
+}
 
 // Parse arguments
 for (let i = 0; i < args.length; i++) {
   const arg = args[i];
+  const equals = arg.match(/^--([^=]+)=(.*)$/);
 
-  if (arg === '--profiles') {
-    options['profiles'] = true;
+  if (equals && optionTypes[equals[1]]) {
+    options[optionTypes[equals[1]]].push(equals[2]);
+  } else if (arg.startsWith('--') && optionTypes[arg.slice(2)] && i + 1 < args.length && !args[i + 1].startsWith('--')) {
+    options[optionTypes[arg.slice(2)]].push(args[i + 1]);
+    i++; // Skip the next argument since we consumed it
+  } else if (arg === '--profiles') {
+    // Kept for backward compatibility. Use --profiles=name for scoped profiles.
   } else if (arg === '--no-profiles') {
-    // Kept for backward compatibility (profiles are already skipped by default)
-    options['profiles'] = false;
-  } else if (arg.startsWith('--theme=')) {
-    // Handle --theme=theme_name format
-    targetTheme = arg.split('=')[1];
-  } else if (arg === '--theme' && i + 1 < args.length) {
-    // Handle --theme theme_name format
-    targetTheme = args[i + 1];
-    i++; // Skip the next argument since we consumed it
-  } else if (arg.startsWith('--module=')) {
-    // Handle --module=module_name format
-    targetModule = arg.split('=')[1];
-  } else if (arg === '--module' && i + 1 < args.length) {
-    // Handle --module module_name format
-    targetModule = args[i + 1];
-    i++; // Skip the next argument since we consumed it
+    // Kept for backward compatibility. Profiles are included in full runs and
+    // omitted from scoped runs unless --profile/--profiles is provided.
   } else if (arg.startsWith('--')) {
-    // Handle other potential flags here
-    console.error(`❌ Unknown option: ${arg}`);
-    console.error('Supported options:');
-    console.error('  --theme <theme_name>    Lint only the specified theme');
-    console.error('  --module <module_name>  Lint only the specified module');
-    console.error('  --profiles                Include profiles in linting (skipped by default)');
-    process.exit(1);
+    printUsageAndExit(`❌ Unknown option: ${arg}`);
   } else {
     // Handle positional arguments (for backward compatibility with Drush command)
     // First positional argument is treated as module name, second as theme name
@@ -3149,15 +3261,7 @@ for (let i = 0; i < args.length; i++) {
     } else if (!targetTheme) {
       targetTheme = arg;
     } else {
-      console.error(`❌ Unexpected argument: ${arg}`);
-      console.error('Supported options:');
-      console.error('  --theme <theme_name>    Lint only the specified theme');
-      console.error('  --module <module_name>  Lint only the specified module');
-      console.error('  --profiles                Include profiles in linting (skipped by default)');
-      console.error('');
-      console.error('Or use positional arguments:');
-      console.error('  <module_name> [theme_name]');
-      process.exit(1);
+      printUsageAndExit(`❌ Unexpected argument: ${arg}`);
     }
   }
 }

@@ -1,8 +1,8 @@
-# Development — maintaining drupal-theme-scaffold
+# Development: maintaining drupal-theme-scaffold
 
 ## Keep it vendor-neutral
 
-Works for any Drupal 10/11 site. Templates use neutral placeholders (`<theme_name>`, `<Human Name>`, `<YourOrg>`) — no real theme names, site, or org branding.
+Works for any Drupal 10/11 site. Templates use neutral placeholders (`<theme_name>`, `<Human Name>`, `<YourOrg>`); no real theme names, site, or org branding.
 
 ## Keep it current with Drupal
 

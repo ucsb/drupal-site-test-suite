@@ -1,4 +1,4 @@
-# Development — maintaining drupal-secrets-management
+# Development: maintaining drupal-secrets-management
 
 ## Vendor-neutral core, hosting-specific providers
 

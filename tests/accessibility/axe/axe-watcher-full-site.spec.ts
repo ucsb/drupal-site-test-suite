@@ -21,8 +21,13 @@ const profileInfo = getProfileInfo();
 // For full-site testing, always use ALL severity levels for comprehensive coverage
 const ALL_SEVERITY_LEVELS = ['critical', 'serious', 'moderate', 'minor'];
 
-// Use configured severity levels for local analysis (what should cause test failures)
-const FAIL_ON_SEVERITY = new Set(axeConfig.severity || ALL_SEVERITY_LEVELS);
+// Severities that FAIL the run, aligned with the other lanes: honor
+// A11Y_SEVERITY_LEVELS first (CI sets critical,serious), then the profile.
+const FAIL_ON_SEVERITY = new Set(
+  process.env.A11Y_SEVERITY_LEVELS
+    ? process.env.A11Y_SEVERITY_LEVELS.split(',').map(s => s.trim()).filter(Boolean)
+    : (axeConfig.severity || ALL_SEVERITY_LEVELS)
+);
 
 console.log(`DEBUG: Environment variables:`);
 console.log(`   BASE_URL: ${BASE}`);

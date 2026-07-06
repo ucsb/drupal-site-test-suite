@@ -8,12 +8,14 @@ This repo is a **copy-in** distribution: you copy its files into your Drupal pro
 
 ## What's included
 
-- **Accessibility:** Siteimprove Alfa, axe-core, pa11y, reflow (320 px), meta-viewport.
+- **Accessibility:** Siteimprove Alfa, axe-core, pa11y, reflow (320 px), meta-viewport, each with its own command (`drush utest:alfa`, `utest:axe`, `utest:axe-watcher`, `utest:pa11y`, `utest:reflow`, `utest:meta-viewport`).
 - **Code quality:** PHPCS, PHPStan, ESLint, Stylelint, TwigCS, HTMLHint, cspell, yaml-lint, editorconfig, markdownlint, actionlint, plus deprecation / next-major, reference-resolution, config-hygiene, and permission-baseline lanes.
 - **Security:** `composer validate`/`audit`, gitleaks.
 - **Functional / Regression:** custom-module PHPUnit (Unit + Kernel), report-only.
 
 **Scope (this version):** the accessibility lanes crawl **public-facing pages** reachable without logging in (discovered via the sitemap or explicit paths). Pages behind a login are not crawled, so authenticated or role-specific content is not yet covered.
+
+**How results read:** every lane uses the same gate: critical and serious findings fail the run, while moderate and minor findings are advisory. `drush utest:all` ends with a per-lane summary table (`PASSED`, `PASSED (advisory)`, `FAILED`, `INCOMPLETE`); a lane that crawls 0 pages or errors on pages is marked `INCOMPLETE` instead of passing. Each lane renders its own HTML report, and the unified report links them all.
 
 Full command reference and usage live in **[`tests/README.md`](tests/README.md)** and the **[cheat sheet](tests/README_cheatsheet.md)**.
 
@@ -21,6 +23,7 @@ Full command reference and usage live in **[`tests/README.md`](tests/README.md)*
 
 | Tool | Minimum |
 | --- | --- |
+| Drupal | 10.3+ (any later 10.x, such as 10.6) or 11.x. The report commands use the `FileExists` enum, added in core 10.3. |
 | Drush | 12+ (via the project's Composer, not the platform's bundled drush) |
 | Node.js | 20+ |
 | PHP | 8.1+ |
@@ -29,6 +32,17 @@ The PHP lanes shell out to standard dev tools; add them to your project:
 
 ```bash
 composer require --dev drupal/coder phpstan/phpstan mglaman/phpstan-drupal friendsoftwig/twigcs
+```
+
+**Docroot layout:** the suite expects the standard Composer project layout with
+the docroot at `web/` (`web/modules/custom`, `web/sites/default/files`, and so
+on). A configurable docroot is not yet supported. If your project uses a
+different docroot (for example Acquia's `docroot/`), create a symlink at the
+project root and commit it:
+
+```bash
+ln -s docroot web
+git add web
 ```
 
 ## Install (copy-in)
@@ -47,7 +61,51 @@ cp drush/Commands/TestingCommands.php drush/Commands/UTestReportCommands.php "$D
 cp -R tests "$DST/"
 ```
 
-If your project already has a `tests/` directory, merge into it instead: `rsync -a tests/ "$DST/tests/"`.
+If your project already has a `tests/` directory, merge into it instead. Note
+that `rsync -a` silently overwrites files with the same name (for example an
+existing `tests/package.json` or `tests/playwright.config.ts`), so preview
+with a dry run first and keep backups of anything replaced:
+
+```bash
+rsync -an tests/ "$DST/tests/"                          # dry run: lists what would change
+rsync -a --backup --suffix=.orig tests/ "$DST/tests/"   # merge; overwritten files keep a .orig copy
+```
+
+**Add the suite's ignore rules.** The copy does not bring this repo's
+`.gitignore`, so add these rules to your project's `.gitignore` to keep
+generated artifacts out of your commits:
+
+```gitignore
+# Drupal test suite: generated artifacts
+tests/reports/*
+!tests/reports/_shell/
+tests/bin/
+tests/playwright-report/
+tests/test-results/
+tests/test-run-results/
+tests/.cache/
+tests/node_modules/
+tests/.pa11yci.json
+.phpunit.result.cache
+
+# Site-owned cspell dictionary: ignored so suite updates never touch it;
+# commit your site's copy once with `git add -f`
+tests/code-quality/spelling/.cspell/site-words.txt
+
+# Local environment values (never commit real values)
+.env
+tests/.env
+```
+
+**Optional: copy a CI pipeline.** The CI examples are not part of the suite itself and nothing activates them automatically; copy one into your provider's config location. For example, for GitHub Actions on Pantheon:
+
+```bash
+mkdir -p "$DST/.github/workflows"
+cp examples/ci/github-pantheon/workflows/* "$DST/.github/workflows/"   # workflows + pipeline guide README
+cp examples/ci/github-pantheon/dependabot.yml "$DST/.github/"
+```
+
+Or the minimal host-agnostic variants: `examples/ci/github/test-suite.yml` into `$DST/.github/workflows/`, `examples/ci/gitlab/.gitlab-ci.yml` into `$DST/`, or `examples/ci/circleci/config.yml` into `$DST/.circleci/`. Each needs placeholders and secrets filled in before it will run; see [CI (optional)](#ci-optional) below and [`examples/ci/README.md`](examples/ci/README.md) for what to replace.
 
 Drush discovers the commands under `drush/Commands/`. If `drush utest:*` isn't found, run `drush cr`. Then, **from your project root**:
 
@@ -72,7 +130,7 @@ Everything else is optional, edited only as needed. These files are **consumer-o
 | `.env` | you want `BASE_URL` and other settings loaded automatically instead of exporting them. |
 | `tests/reports/_shell/branding.json` | you want your org name, title, and footer on the report (ships neutral). |
 | `tests/code-quality/config/custom-paths.json` | your custom code lives outside the standard `web/{modules,themes,profiles}/custom` paths (most sites skip this). |
-| `tests/code-quality/spelling/.cspell/site-words.txt` | cspell flags site-specific terms you want to allow (ships empty). |
+| `tests/code-quality/spelling/.cspell/site-words.txt` | cspell flags site-specific terms you want to allow (untracked here; the lint lane creates it empty on first run; commit your copy with `git add -f`). |
 | `tests/code-quality/static-analysis/phpstan-baseline.neon` | you want to silence pre-existing PHPStan findings; generate your own (ships empty). |
 | `tests/code-quality/security/.gitleaks.toml` | gitleaks flags a false positive you want to allowlist. |
 

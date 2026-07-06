@@ -1,8 +1,8 @@
-# Development — maintaining drupal-hook-update-n
+# Development: maintaining drupal-hook-update-n
 
 ## Keep it vendor-neutral
 
-Works for any Drupal 10/11 site. Examples use neutral names (`my_module`, `old_module`/`new_module`, `oldtheme`/`newtheme`) — no real site/module/person/roadmap or CI identifiers. Generic "downstream sites" / "your CI," never a specific project's phases or scale.
+Works for any Drupal 10/11 site. Examples use neutral names (`my_module`, `old_module`/`new_module`, `oldtheme`/`newtheme`); no real site/module/person/roadmap or CI identifiers. Generic "downstream sites" / "your CI," never a specific project's phases or scale.
 
 ## Keep it current with Drupal
 
