@@ -37,7 +37,7 @@ Key flags:
 - `--max-pages=N` on the sitemap-crawling lanes; caps the crawl. Cap for speed during iteration, but **record the cap in `coverage`** (a capped run is partial coverage). `all` or `0` = no cap.
 - `--a11y-profile=standard|comprehensive` (default `comprehensive`). For a **legal-compliance** audit, run `standard`; for the CI-equivalent superset, `comprehensive`. The profile is captured per lane in the emitted JSON.
 
-**Exit code:** a11y lanes exit **non-zero on critical/serious findings or an incomplete run** (errored pages, crawl failure). Non-zero is a signal, not a crash; **read the JSON regardless of exit code**: `summary.status` distinguishes `findings-found`/`fail` from `incomplete`/`error`. (This differs from `utest:lint`, which exits 0 on findings.)
+**Exit code:** a11y lanes exit **non-zero on critical/serious findings or an incomplete run** (errored pages, crawl failure). Non-zero is a signal, not a crash; **read the JSON regardless of exit code**: `summary.status` distinguishes `findings-found` from `incomplete` (these lanes emit `pass` / `findings-found` / `incomplete`; the broader envelope enum in `../reference/finding-format.md` covers other sources). (This differs from `utest:lint`, which exits 0 on findings.)
 
 **Don't re-run if fresh findings exist.** If the lanes already ran recently (e.g. via `utest:all`), read the existing per-lane files instead of re-running. Reports all land under `…/test-reports/`.
 

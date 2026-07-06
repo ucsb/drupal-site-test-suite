@@ -79,7 +79,7 @@ Default with a reachable site: **drush**: it runs the same engines/config as CI.
 
 The adapter produces **one aggregated envelope** merging every a11y lane that ran (axe, Alfa, pa11y, reflow, meta-viewport each emit their own file). Before moving on, sanity-check `coverage`: a11y "clean" is easy to fake:
 
-- **Alfa** checks only `critical`/`serious` by default; **pa11y** has no profile; lanes can be **capped** (`--max-pages`) or **skipped** (missing API key, unreachable). Surface all of this. A clean result only covers the pages and severities actually checked.
+- Lanes **report every severity** but **gate only on `critical`/`serious`**; **pa11y** has no profile; lanes can be **capped** (`--max-pages`) or **skipped** (missing API key, unreachable). Surface all of this. A clean result only covers the pages and rule sets (profile) actually checked.
 
 ## Step 3: Diagnose
 
